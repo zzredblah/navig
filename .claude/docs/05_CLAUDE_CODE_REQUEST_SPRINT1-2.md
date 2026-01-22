@@ -12,7 +12,7 @@
 ### 요청 내용
 
 ```
-Ticky 프로젝트의 초기 개발 환경을 구축해주세요.
+Navig 프로젝트의 초기 개발 환경을 구축해주세요.
 
 기술 스택:
 - Frontend: React 18 + TypeScript + Vite
@@ -23,7 +23,7 @@ Ticky 프로젝트의 초기 개발 환경을 구축해주세요.
 - Storage: Cloudflare R2
 
 디렉토리 구조:
-ticky/
+navig/
 ├── apps/
 │   ├── web/          # React 프론트엔드
 │   └── api/          # NestJS 백엔드

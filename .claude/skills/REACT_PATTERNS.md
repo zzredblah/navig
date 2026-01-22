@@ -1,4 +1,4 @@
-# Ticky React 패턴 (React Patterns)
+# Navig React 패턴 (React Patterns)
 
 **버전:** 1.0  
 **최종 수정:** 2025-01-22

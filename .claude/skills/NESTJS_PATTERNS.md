@@ -1,4 +1,4 @@
-# Ticky NestJS 패턴 (NestJS Patterns)
+# Navig NestJS 패턴 (NestJS Patterns)
 
 **버전:** 1.0  
 **최종 수정:** 2025-01-22

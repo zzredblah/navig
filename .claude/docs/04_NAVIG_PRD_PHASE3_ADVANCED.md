@@ -1,4 +1,4 @@
-# Ticky PRD - Phase 3: 고도화 (Month 7-12)
+# Navig PRD - Phase 3: 고도화 (Month 7-12)
 
 **버전:** 1.0  
 **기간:** Month 7 ~ Month 12 (24주)  

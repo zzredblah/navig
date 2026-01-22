@@ -1,4 +1,4 @@
-# Ticky 코딩 표준 (Coding Standards)
+# Navig 코딩 표준 (Coding Standards)
 
 **버전:** 1.0  
 **최종 수정:** 2025-01-22

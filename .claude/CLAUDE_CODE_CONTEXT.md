@@ -1,4 +1,4 @@
-# Ticky Claude Code Sub-Agent 설정
+# Navig Claude Code Sub-Agent 설정
 
 **버전:** 1.0  
 **최종 수정:** 2025-01-22
@@ -7,7 +7,7 @@
 
 ## 1. 개요
 
-이 문서는 Ticky 프로젝트 개발 시 Claude Code가 참조해야 할 컨텍스트와 규칙을 정의합니다.
+이 문서는 Navig 프로젝트 개발 시 Claude Code가 참조해야 할 컨텍스트와 규칙을 정의합니다.
 
 ---
 
@@ -16,7 +16,7 @@
 ### 2.1 기본 정보
 
 ```yaml
-프로젝트명: Ticky
+프로젝트명: Navig
 설명: 영상 제작자, 편집자, 의뢰인을 위한 올인원 프로젝트 관리 및 협업 플랫폼
 버전: 0.1.0 (개발 중)
 ```
@@ -62,8 +62,8 @@ Claude Code는 작업 전 반드시 다음 파일들을 참조해야 합니다:
 
 | 파일 | 용도 |
 |------|------|
-| `.claude/docs/01_TICKY_PRD_FULL.md` | 전체 요구사항 확인 |
-| `.claude/docs/02_TICKY_PRD_PHASE1_MVP.md` | Phase 1 상세 스펙 |
+| `.claude/docs/01_NAVIG_PRD_FULL.md` | 전체 요구사항 확인 |
+
 
 ### 3.2 규칙 문서
 
@@ -71,6 +71,7 @@ Claude Code는 작업 전 반드시 다음 파일들을 참조해야 합니다:
 |------|------|
 | `.claude/rules/CODING_STANDARDS.md` | 코딩 컨벤션 |
 | `.claude/rules/DESIGN_SYSTEM.md` | UI/UX 가이드라인 |
+| `.claude/rules/ERROR_PREVENTION.md` | 오류 방지 가이드 (필독) |
 
 ### 3.3 스킬 문서
 

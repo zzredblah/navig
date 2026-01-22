@@ -397,7 +397,7 @@ UI 레이아웃:
 
 - `rules/CODING_STANDARDS.md` - 코딩 컨벤션
 - `rules/DESIGN_SYSTEM.md` - 디자인 시스템
-- 전체 PRD: `01_TICKY_PRD_FULL.md` 섹션 3.3
+- 전체 PRD: `01_NAVIG_PRD_FULL.md` 섹션 3.3
 
 ---
 

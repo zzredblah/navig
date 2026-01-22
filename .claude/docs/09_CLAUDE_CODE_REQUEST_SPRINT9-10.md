@@ -443,7 +443,7 @@ MVP 완성을 위한 마무리 작업을 진행해주세요.
 
 - `rules/CODING_STANDARDS.md` - 코딩 컨벤션
 - `rules/DESIGN_SYSTEM.md` - 디자인 시스템
-- 전체 PRD: `01_TICKY_PRD_FULL.md` 섹션 3.5
+- 전체 PRD: `01_NAVIG_PRD_FULL.md` 섹션 3.5
 
 ---
 

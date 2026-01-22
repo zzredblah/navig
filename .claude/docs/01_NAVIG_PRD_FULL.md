@@ -1,4 +1,4 @@
-# Ticky - Product Requirements Document (PRD)
+# Navig - Product Requirements Document (PRD)
 
 **버전:** 1.0  
 **작성일:** 2025년 1월 22일  
@@ -27,7 +27,7 @@
 
 | 항목 | 내용 |
 |------|------|
-| **제품명** | Ticky |
+| **제품명** | Navig |
 | **한 줄 설명** | 영상 제작자, 편집자, 의뢰인을 위한 올인원 프로젝트 관리 및 협업 플랫폼 |
 | **도메인** | 영상 제작 협업 SaaS |
 | **플랫폼** | 웹 애플리케이션 (반응형) |
