@@ -49,3 +49,4 @@ next-env.d.ts
 .ruler/
 .vscode/
 .idea/
+.env*.local
