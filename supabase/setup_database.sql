@@ -1,5 +1,5 @@
 -- ============================================
--- Navig Database Setup - 전체 실행용
+-- NAVIG Database Setup - 전체 실행용
 -- ============================================
 -- 이 파일을 Supabase SQL Editor에 복사해서 한 번에 실행하세요
 -- https://supabase.com/dashboard -> SQL Editor -> New Query

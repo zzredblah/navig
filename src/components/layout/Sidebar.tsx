@@ -7,16 +7,20 @@ import { cn } from '@/lib/utils';
 import {
   LayoutDashboard,
   FolderOpen,
+  FileText,
   Users,
+  Trash2,
   Settings,
   HelpCircle,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import type { SidebarConfig } from '@/types/database';
 
 interface SidebarProps {
   isOpen?: boolean;
   onClose?: () => void;
+  sidebarConfig?: SidebarConfig | null;
 }
 
 const menuItems = [
@@ -31,6 +35,11 @@ const menuItems = [
     icon: FolderOpen,
   },
   {
+    title: '문서',
+    href: '/documents',
+    icon: FileText,
+  },
+  {
     title: '팀 멤버',
     href: '/team',
     icon: Users,
@@ -38,6 +47,11 @@ const menuItems = [
 ];
 
 const bottomMenuItems = [
+  {
+    title: '휴지통',
+    href: '/documents/trash',
+    icon: Trash2,
+  },
   {
     title: '설정',
     href: '/settings',
@@ -50,8 +64,19 @@ const bottomMenuItems = [
   },
 ];
 
-export function Sidebar({ isOpen, onClose }: SidebarProps) {
+// Items that cannot be hidden
+const ALWAYS_VISIBLE = ['/dashboard', '/settings'];
+
+export function Sidebar({ isOpen, onClose, sidebarConfig }: SidebarProps) {
   const pathname = usePathname();
+  const hiddenItems = sidebarConfig?.hidden || [];
+
+  const filteredMenuItems = menuItems.filter(
+    (item) => ALWAYS_VISIBLE.includes(item.href) || !hiddenItems.includes(item.href)
+  );
+  const filteredBottomMenuItems = bottomMenuItems.filter(
+    (item) => ALWAYS_VISIBLE.includes(item.href) || !hiddenItems.includes(item.href)
+  );
 
   return (
     <>
@@ -89,9 +114,9 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             </Button>
           </div>
 
-          {/* Navigation */}
+          {/* NAVIGation */}
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-            {menuItems.map((item) => {
+            {filteredMenuItems.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
                 <Link
@@ -114,7 +139,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
           {/* Bottom navigation */}
           <div className="p-4 border-t border-gray-200 space-y-1">
-            {bottomMenuItems.map((item) => {
+            {filteredBottomMenuItems.map((item) => {
               const isActive = pathname === item.href;
               return (
                 <Link

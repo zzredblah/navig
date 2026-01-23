@@ -1,4 +1,4 @@
-# Navig PRD - Phase 1: MVP (Month 1-3)
+# NAVIG PRD - Phase 1: MVP (Month 1-3)
 
 **버전:** 1.0  
 **기간:** Month 1 ~ Month 3 (12주)  

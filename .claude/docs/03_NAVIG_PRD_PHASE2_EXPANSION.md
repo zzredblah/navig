@@ -1,4 +1,4 @@
-# Navig PRD - Phase 2: 기능 확장 (Month 4-6)
+# NAVIG PRD - Phase 2: 기능 확장 (Month 4-6)
 
 **버전:** 1.0  
 **기간:** Month 4 ~ Month 6 (12주)  
@@ -439,7 +439,7 @@ interface Payment {
 **메시지 포맷**:
 
 ```
-🎬 [Navig] 새 피드백
+🎬 [NAVIG] 새 피드백
 ━━━━━━━━━━━━━━━━━━━
 프로젝트: 브랜드 홍보영상
 타임코드: 00:01:30

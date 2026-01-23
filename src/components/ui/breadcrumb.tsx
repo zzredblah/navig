@@ -10,6 +10,9 @@ import { cn } from '@/lib/utils';
 const pathLabels: Record<string, string> = {
   dashboard: '대시보드',
   projects: '프로젝트',
+  documents: '문서',
+  team: '팀 멤버',
+  trash: '휴지통',
   profile: '프로필',
   settings: '설정',
   new: '새로 만들기',

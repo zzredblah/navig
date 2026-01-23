@@ -24,7 +24,7 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
   // 프로필 정보 가져오기
   const { data: profile } = await supabase
     .from('profiles')
-    .select('name, avatar_url')
+    .select('name, avatar_url, sidebar_config')
     .eq('id', user.id)
     .single();
 
@@ -34,5 +34,9 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
     avatar_url: profile?.avatar_url,
   };
 
-  return <MainLayout user={userData}>{children}</MainLayout>;
+  return (
+    <MainLayout user={userData} sidebarConfig={profile?.sidebar_config}>
+      {children}
+    </MainLayout>
+  );
 }

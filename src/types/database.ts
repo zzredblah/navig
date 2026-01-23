@@ -1,5 +1,5 @@
 /**
- * Navig Database Types - Sprint 1-2
+ * NAVIG Database Types - Sprint 1-2
  * Supabase 스키마와 호환되는 타입 정의
  */
 
@@ -21,6 +21,28 @@ export type ProjectStatus = 'planning' | 'production' | 'review' | 'completed';
 
 export type MemberRole = 'owner' | 'editor' | 'viewer';
 
+export type DocumentType = 'request' | 'estimate' | 'contract';
+
+export type DocumentStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'signed';
+
+export type TemplateFieldType = 'text' | 'number' | 'date' | 'textarea' | 'select' | 'file';
+
+export interface TemplateField {
+  name: string;
+  label: string;
+  type: TemplateFieldType;
+  required: boolean;
+  options?: string[];
+}
+
+// ============================================
+// Sidebar Config
+// ============================================
+
+export interface SidebarConfig {
+  hidden?: string[];
+}
+
 // ============================================
 // Database Interface (Supabase 호환)
 // ============================================
@@ -37,6 +59,7 @@ export interface Database {
           role: UserRole;
           phone: string | null;
           company: string | null;
+          sidebar_config: SidebarConfig | null;
           created_at: string;
           updated_at: string;
         };
@@ -48,6 +71,7 @@ export interface Database {
           role?: UserRole;
           phone?: string | null;
           company?: string | null;
+          sidebar_config?: SidebarConfig | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -59,6 +83,7 @@ export interface Database {
           role?: UserRole;
           phone?: string | null;
           company?: string | null;
+          sidebar_config?: SidebarConfig | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -144,6 +169,189 @@ export interface Database {
           }
         ];
       };
+      document_templates: {
+        Row: {
+          id: string;
+          type: DocumentType;
+          name: string;
+          description: string | null;
+          fields: TemplateField[];
+          is_default: boolean;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          type: DocumentType;
+          name: string;
+          description?: string | null;
+          fields?: TemplateField[];
+          is_default?: boolean;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          type?: DocumentType;
+          name?: string;
+          description?: string | null;
+          fields?: TemplateField[];
+          is_default?: boolean;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      documents: {
+        Row: {
+          id: string;
+          project_id: string;
+          template_id: string | null;
+          type: DocumentType;
+          title: string;
+          content: Record<string, unknown>;
+          status: DocumentStatus;
+          version: number;
+          file_url: string | null;
+          reject_reason: string | null;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          template_id?: string | null;
+          type: DocumentType;
+          title: string;
+          content?: Record<string, unknown>;
+          status?: DocumentStatus;
+          version?: number;
+          file_url?: string | null;
+          reject_reason?: string | null;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          template_id?: string | null;
+          type?: DocumentType;
+          title?: string;
+          content?: Record<string, unknown>;
+          status?: DocumentStatus;
+          version?: number;
+          file_url?: string | null;
+          reject_reason?: string | null;
+          created_by?: string;
+          created_at?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'documents_project_id_fkey';
+            columns: ['project_id'];
+            referencedRelation: 'projects';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'documents_template_id_fkey';
+            columns: ['template_id'];
+            referencedRelation: 'document_templates';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'documents_created_by_fkey';
+            columns: ['created_by'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      document_versions: {
+        Row: {
+          id: string;
+          document_id: string;
+          version: number;
+          content: Record<string, unknown>;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          document_id: string;
+          version: number;
+          content: Record<string, unknown>;
+          created_by: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          document_id?: string;
+          version?: number;
+          content?: Record<string, unknown>;
+          created_by?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'document_versions_document_id_fkey';
+            columns: ['document_id'];
+            referencedRelation: 'documents';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      signatures: {
+        Row: {
+          id: string;
+          document_id: string;
+          user_id: string;
+          signature_data: string;
+          ip_address: string | null;
+          user_agent: string | null;
+          signed_at: string;
+        };
+        Insert: {
+          id?: string;
+          document_id: string;
+          user_id: string;
+          signature_data: string;
+          ip_address?: string | null;
+          user_agent?: string | null;
+          signed_at?: string;
+        };
+        Update: {
+          id?: string;
+          document_id?: string;
+          user_id?: string;
+          signature_data?: string;
+          ip_address?: string | null;
+          user_agent?: string | null;
+          signed_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'signatures_document_id_fkey';
+            columns: ['document_id'];
+            referencedRelation: 'documents';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'signatures_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -166,6 +374,8 @@ export interface Database {
       user_role: UserRole;
       project_status: ProjectStatus;
       member_role: MemberRole;
+      document_type: DocumentType;
+      document_status: DocumentStatus;
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -193,6 +403,10 @@ export type Enums<T extends keyof Database['public']['Enums']> =
 export type Profile = Tables<'profiles'>;
 export type Project = Tables<'projects'>;
 export type ProjectMember = Tables<'project_members'>;
+export type DocumentTemplate = Tables<'document_templates'>;
+export type Document = Tables<'documents'>;
+export type DocumentVersion = Tables<'document_versions'>;
+export type Signature = Tables<'signatures'>;
 
 // 확장 타입 (조인된 데이터)
 export type ProjectWithClient = Project & {
@@ -201,4 +415,17 @@ export type ProjectWithClient = Project & {
 
 export type ProjectMemberWithUser = ProjectMember & {
   user: Profile;
+};
+
+export type DocumentWithTemplate = Document & {
+  template: DocumentTemplate | null;
+  creator: Profile;
+};
+
+export type DocumentWithSignatures = Document & {
+  signatures: Signature[];
+};
+
+export type DocumentVersionWithCreator = DocumentVersion & {
+  creator: Profile;
 };

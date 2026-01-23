@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Settings, UserPlus, Users, Trash2, Pencil } from 'lucide-react';
+import { ArrowLeft, Settings, UserPlus, Users, Trash2, Pencil, FileText } from 'lucide-react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
@@ -196,6 +196,24 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       </div>
 
       <div className="grid gap-6">
+        {/* 문서 관리 카드 */}
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push(`/projects/${resolvedParams.id}/documents`)}>
+          <CardContent className="flex items-center justify-between p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-primary-100 text-primary-600 flex items-center justify-center">
+                <FileText className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">문서 관리</h3>
+                <p className="text-sm text-gray-500">요청서, 견적서, 계약서를 관리합니다</p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm">
+              바로가기
+            </Button>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -267,20 +285,24 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
               <div>
                 <dt className="text-sm text-gray-500">생성일</dt>
                 <dd className="font-medium">
-                  {new Date(project.created_at).toLocaleDateString('ko-KR', {
+                  {new Date(project.created_at).toLocaleString('ko-KR', {
                     year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
                   })}
                 </dd>
               </div>
               <div>
                 <dt className="text-sm text-gray-500">최근 수정일</dt>
                 <dd className="font-medium">
-                  {new Date(project.updated_at).toLocaleDateString('ko-KR', {
+                  {new Date(project.updated_at).toLocaleString('ko-KR', {
                     year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
                   })}
                 </dd>
               </div>

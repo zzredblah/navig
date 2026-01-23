@@ -1,7 +1,7 @@
-# Navig 디자인 시스템 (Design System)
+# NAVIG 디자인 시스템 (Design System)
 
-**버전:** 2.0
-**최종 수정:** 2025-01-22
+**버전:** 3.0
+**최종 수정:** 2026-01-23
 
 > **중요**: 모든 UI 개발 시 이 문서를 참조하세요. 일관된 디자인을 유지하기 위해 정의된 색상, 컴포넌트, 패턴을 사용해야 합니다.
 
@@ -31,7 +31,7 @@
 
 ### 2.1 Primary (브랜드) - Violet 계열
 
-> Navig의 브랜드 색상은 **보라색(Violet)**입니다. 크리에이티브하고 현대적인 느낌을 줍니다.
+> NAVIG의 브랜드 색상은 **보라색(Violet)**입니다. 크리에이티브하고 현대적인 느낌을 줍니다.
 
 ```css
 /* CSS 변수 (globals.css) */
@@ -232,7 +232,7 @@ const colorStyles = {
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center">
           <Video className="h-5 w-5 text-white" />
         </div>
-        <span className="text-xl font-bold text-gray-900">Navig</span>
+        <span className="text-xl font-bold text-gray-900">NAVIG</span>
       </Link>
 
       {/* 네비게이션 */}
@@ -339,7 +339,7 @@ const colorStyles = {
     <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
       <Link href="/dashboard" className="flex items-center gap-2">
         <Video className="h-6 w-6 text-primary-600" />
-        <span className="text-xl font-bold text-gray-900">Navig</span>
+        <span className="text-xl font-bold text-gray-900">NAVIG</span>
       </Link>
     </div>
 
@@ -477,7 +477,7 @@ xl:  1280px  // 데스크톱
 2xl: 1536px  // 큰 데스크톱
 ```
 
-### 8.2 반응형 패턴
+### 8.2 기본 반응형 패턴
 
 ```jsx
 // 텍스트 크기
@@ -497,9 +497,217 @@ className="hidden lg:flex"    // lg 이상에서만 표시
 className="lg:hidden"         // lg 미만에서만 표시
 ```
 
+### 8.3 페이지 헤더 (제목 + 액션 버튼) - 필수 패턴
+
+> **중요**: 페이지 상단에 제목과 버튼이 함께 있는 레이아웃은 반드시 아래 패턴을 따를 것.
+> `flex items-center justify-between`만 사용하면 모바일에서 버튼이 넘침.
+
+```jsx
+// ✅ Good: 모바일에서 세로 배치, 데스크톱에서 가로 배치
+<div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+  {/* 제목 영역 */}
+  <div className="flex items-center gap-3 min-w-0">
+    <Button variant="ghost" size="sm" className="shrink-0">
+      <ArrowLeft className="h-4 w-4" />
+    </Button>
+    <div className="min-w-0">
+      <h1 className="text-xl font-bold text-gray-900 truncate">{title}</h1>
+      <div className="flex items-center gap-2 mt-1">
+        <StatusBadge />
+        <span className="text-sm text-gray-500">부가 정보</span>
+      </div>
+    </div>
+  </div>
+
+  {/* 액션 버튼 영역 */}
+  <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+    <Button variant="outline" size="sm">버튼1</Button>
+    <Button size="sm" className="bg-primary-600">버튼2</Button>
+  </div>
+</div>
+
+// ❌ Bad: 모바일에서 넘침
+<div className="flex items-center justify-between">
+  <h1>제목</h1>
+  <div className="flex gap-2">
+    <Button>버튼1</Button>
+    <Button>버튼2</Button>
+    <Button>버튼3</Button>
+  </div>
+</div>
+```
+
+**핵심 규칙:**
+- 항상 `flex-col sm:flex-row` 사용
+- 제목에 `min-w-0` + `truncate` 적용 (텍스트 넘침 방지)
+- 버튼 영역에 `flex-wrap` 적용 (버튼 줄바꿈 허용)
+- 버튼은 `size="sm"` 통일 (모바일 공간 절약)
+- 뒤로가기 버튼에 `shrink-0` (축소 방지)
+
+### 8.4 메타데이터 목록 (여러 정보 나열)
+
+```jsx
+// ✅ Good: wrap + 모바일에서 덜 중요한 정보 숨김
+<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+  <span className="flex items-center gap-1">
+    <Users className="h-3 w-3" /> 멤버 3
+  </span>
+  <span className="flex items-center gap-1">
+    <FileText className="h-3 w-3" /> 문서 5
+  </span>
+  <span className="hidden sm:inline-flex items-center gap-1">
+    생성 1월 15일
+  </span>
+  <span className="hidden sm:inline-flex items-center gap-1">
+    수정 1월 20일
+  </span>
+</div>
+
+// ❌ Bad: 한 줄에 모든 정보 → 모바일 넘침
+<div className="flex items-center gap-4 text-xs">
+  <span>멤버 3</span>
+  <span>문서 5</span>
+  <span>생성 1월 15일</span>
+  <span>수정 1월 20일</span>
+</div>
+```
+
+### 8.5 카드 내 가로 레이아웃
+
+```jsx
+// ✅ Good: 모바일에서 세로 스택
+<CardContent className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4">
+  <div className="flex items-center gap-3 min-w-0">
+    <div className="w-10 h-10 shrink-0 rounded-lg bg-primary-100" />
+    <div className="min-w-0">
+      <div className="font-medium truncate">{title}</div>
+      <div className="text-sm text-gray-500 truncate">{metadata}</div>
+    </div>
+  </div>
+  <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
+    <Badge />
+    <Button size="sm" />
+  </div>
+</CardContent>
+
+// ❌ Bad: 강제 가로 배치
+<CardContent className="flex items-center justify-between p-4">
+```
+
+**핵심 규칙:**
+- 아이콘/이미지에 `shrink-0` (축소 방지)
+- 텍스트 영역에 `min-w-0` + `truncate`
+- 우측 요소에 `self-end sm:self-center` (모바일: 오른쪽 정렬)
+
 ---
 
-## 9. 다크 모드 (선택적)
+## 9. 폼 입력 (Form Inputs)
+
+### 9.1 raw HTML input 스타일링 - 필수 규칙
+
+> **중요**: shadcn `<Input>` 컴포넌트를 사용할 수 없는 경우(date, password 등)
+> raw `<input>` 요소에는 반드시 `bg-white text-gray-900`을 명시해야 함.
+> CSS 변수(`text-foreground`)를 상속받아 의도치 않은 색상이 적용될 수 있음.
+
+```jsx
+// ✅ Good: 명시적 배경/텍스트 색상
+<input
+  type="text"
+  className="mt-1 block w-full rounded-md border border-gray-200 bg-white text-gray-900 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+/>
+
+// ✅ Good: 비활성화 상태
+<input
+  type="email"
+  disabled
+  className="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 text-gray-500 px-3 py-2 text-sm"
+/>
+
+// ❌ Bad: bg/text 색상 미지정 → 검은색/어두운 배경 가능
+<input
+  type="text"
+  className="mt-1 block w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+/>
+```
+
+**필수 클래스:**
+- `bg-white` - 배경색 명시
+- `text-gray-900` - 텍스트 색상 명시
+- `placeholder:text-gray-400` - placeholder 색상
+- `focus:outline-none` - 브라우저 기본 아웃라인 제거
+- `focus:ring-1 focus:ring-primary-500` - 커스텀 포커스 링
+
+### 9.2 shadcn Input/Textarea 사용 우선
+
+```jsx
+// 가능하면 항상 shadcn 컴포넌트 사용
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+
+<Input value={value} onChange={onChange} />
+<Textarea value={value} onChange={onChange} rows={4} />
+```
+
+raw `<input>`이 필요한 경우:
+- `type="date"` (shadcn에 없음)
+- `type="file"` (hidden + 커스텀 버튼)
+- 특수한 스타일링 필요 시
+
+---
+
+## 10. 빈 상태 & 피드백 (Empty States)
+
+### 10.1 원칙
+
+> **모든 인터랙티브 요소는 항상 피드백을 제공해야 함.**
+> 버튼을 클릭했는데 아무 반응이 없으면 버그로 느껴짐.
+
+### 10.2 드롭다운/팝오버 빈 상태
+
+```jsx
+// ✅ Good: 알림 벨 - 비어있어도 드롭다운 표시
+<DropdownMenu>
+  <DropdownMenuTrigger asChild>
+    <Button variant="ghost" size="icon">
+      <Bell className="h-5 w-5" />
+    </Button>
+  </DropdownMenuTrigger>
+  <DropdownMenuContent className="w-72" align="end">
+    <div className="px-3 py-2 border-b border-gray-100">
+      <p className="text-sm font-medium text-gray-900">알림</p>
+    </div>
+    <div className="flex flex-col items-center justify-center py-8 px-4">
+      <Bell className="h-8 w-8 text-gray-300 mb-2" />
+      <p className="text-sm text-gray-500">알림이 없습니다</p>
+      <p className="text-xs text-gray-400 mt-0.5">새로운 알림이 오면 여기에 표시됩니다</p>
+    </div>
+  </DropdownMenuContent>
+</DropdownMenu>
+
+// ❌ Bad: 클릭해도 반응 없는 버튼
+<Button variant="ghost" size="icon">
+  <Bell className="h-5 w-5" />
+</Button>
+```
+
+### 10.3 리스트 빈 상태
+
+```jsx
+// 빈 리스트 패턴
+<div className="flex flex-col items-center justify-center py-16">
+  <Icon className="h-12 w-12 text-gray-300 mb-4" />
+  <p className="text-gray-500 mb-2">데이터가 없습니다</p>
+  <p className="text-sm text-gray-400 mb-4">설명 메시지</p>
+  <Button variant="outline" onClick={handleCreate}>
+    <Plus className="h-4 w-4 mr-2" />
+    새로 만들기
+  </Button>
+</div>
+```
+
+---
+
+## 11. 다크 모드 (선택적)
 
 ```css
 /* globals.css에 정의됨 */
@@ -513,7 +721,7 @@ className="lg:hidden"         // lg 미만에서만 표시
 
 ---
 
-## 10. 체크리스트
+## 12. 체크리스트
 
 새 UI 개발 시 확인:
 
@@ -521,14 +729,31 @@ className="lg:hidden"         // lg 미만에서만 표시
 - [ ] 그라데이션 적용 (히어로, CTA 섹션)
 - [ ] backdrop-blur 헤더
 - [ ] 호버 효과 (그림자, 스케일)
-- [ ] 반응형 레이아웃
 - [ ] Lucide React 아이콘
 - [ ] 적절한 간격 (py-20, gap-6 등)
 - [ ] 트랜지션 애니메이션
 
+### 반응형 (필수)
+- [ ] 페이지 헤더: `flex-col sm:flex-row` 패턴 사용 (§8.3)
+- [ ] 메타데이터 목록: `flex-wrap` + 모바일 숨김 (§8.4)
+- [ ] 카드 레이아웃: `flex-col sm:flex-row` (§8.5)
+- [ ] 긴 텍스트: `min-w-0` + `truncate`
+- [ ] 액션 버튼: `flex-wrap` + `size="sm"`
+- [ ] 덜 중요한 정보: `hidden sm:inline-flex`로 모바일 숨김
+
+### 폼/입력 (필수)
+- [ ] raw `<input>` 사용 시 `bg-white text-gray-900` 명시 (§9.1)
+- [ ] `placeholder:text-gray-400` + `focus:outline-none` 포함
+- [ ] 가능하면 shadcn `<Input>` 컴포넌트 사용 (§9.2)
+
+### 인터랙션 (필수)
+- [ ] 모든 클릭 가능한 요소에 피드백 존재 (§10)
+- [ ] 빈 상태 UI 구현 (리스트, 드롭다운)
+- [ ] 로딩/에러 상태 UI 구현
+
 ---
 
-## 11. 파일 참조
+## 13. 파일 참조
 
 | 파일 | 용도 |
 |------|------|

@@ -12,7 +12,7 @@
 ### 요청 내용
 
 ```
-Navig 프로젝트의 초기 개발 환경을 구축해주세요.
+NAVIG 프로젝트의 초기 개발 환경을 구축해주세요.
 
 기술 스택:
 - Frontend: React 18 + TypeScript + Vite

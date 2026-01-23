@@ -1,4 +1,4 @@
-# Navig React 패턴 (React Patterns)
+# NAVIG React 패턴 (React Patterns)
 
 **버전:** 1.0  
 **최종 수정:** 2025-01-22
@@ -478,7 +478,7 @@ export function DynamicForm({ fields, onSubmit }: DynamicFormProps) {
 ```tsx
 // App.tsx
 
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NAVIGate } from 'react-router-dom';
 import { MainLayout } from '@/components/layout';
 import { ProtectedRoute } from '@/components/auth';
 
@@ -500,7 +500,7 @@ export function App() {
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
             <Route element={<MainLayout />}>
-              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/" element={<NAVIGate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/projects/:id" element={<ProjectDetailPage />} />
@@ -522,7 +522,7 @@ export function App() {
 ```tsx
 // components/auth/ProtectedRoute.tsx
 
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { NAVIGate, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 
 export function ProtectedRoute() {
@@ -530,7 +530,7 @@ export function ProtectedRoute() {
   const location = useLocation();
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <NAVIGate to="/login" state={{ from: location }} replace />;
   }
 
   return <Outlet />;

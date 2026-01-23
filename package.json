@@ -6,7 +6,9 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@hookform/resolvers": "^4",
@@ -30,6 +32,8 @@
     "date-fns": "^4",
     "es-toolkit": "^1",
     "framer-motion": "^11",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.0.0",
     "lucide-react": "^0.469.0",
     "next": "^15.5.9",
     "next-themes": "^0.4.3",
@@ -37,6 +41,7 @@
     "react-dom": "^19.0.0",
     "react-hook-form": "^7",
     "react-use": "^17",
+    "recharts": "^3.7.0",
     "server-only": "0.0.1",
     "ts-pattern": "^5",
     "zod": "^3",
@@ -45,15 +50,20 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/typography": "^0.5.10",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5.1.2",
     "eslint": "^9",
     "eslint-config-next": "15.1.0",
+    "jsdom": "^27.4.0",
     "postcss": "^8",
     "tailwind-merge": "^2.5.2",
     "tailwindcss": "^3.4.1",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.0.18"
   }
 }

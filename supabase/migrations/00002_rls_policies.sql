@@ -1,5 +1,5 @@
 -- ============================================
--- Navig Row Level Security (RLS) Policies
+-- NAVIG Row Level Security (RLS) Policies
 -- ============================================
 -- Version: 1.0
 -- Created: 2025-01-22

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
+import type { SidebarConfig } from '@/types/database';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -12,15 +13,16 @@ interface MainLayoutProps {
     email: string;
     avatar_url?: string | null;
   };
+  sidebarConfig?: SidebarConfig | null;
   showBreadcrumb?: boolean;
 }
 
-export function MainLayout({ children, user, showBreadcrumb = true }: MainLayoutProps) {
+export function MainLayout({ children, user, sidebarConfig, showBreadcrumb = true }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} sidebarConfig={sidebarConfig} />
 
       <div className="lg:pl-64">
         <Header user={user} onMenuClick={() => setSidebarOpen(true)} />

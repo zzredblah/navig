@@ -42,7 +42,7 @@ export default function LandingPage() {
               />
             </Link>
 
-            {/* Desktop Navigation */}
+            {/* Desktop NAVIGation */}
             <nav className="hidden lg:flex items-center gap-8">
               {navItems.map((item) => (
                 <Link
