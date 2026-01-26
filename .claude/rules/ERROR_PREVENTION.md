@@ -1,7 +1,7 @@
 # NAVIG 오류 방지 가이드 (Error Prevention Guide)
 
-**버전:** 2.0
-**최종 수정:** 2026-01-23
+**버전:** 2.2
+**최종 수정:** 2026-01-26
 **목적:** 개발 중 발생한 오류와 해결책을 문서화하여 재발 방지
 
 ---
@@ -198,35 +198,96 @@ if (error) {
 
 ---
 
-## 6. Supabase Storage 파일 업로드 관련
+## 6. 파일 스토리지 (Cloudflare R2 / Supabase Storage)
 
-### 6.1 문제: 서버 API에서 파일 업로드 시 500 에러
+> **참고:** 2026-01-26부터 Cloudflare R2를 기본 스토리지로 사용합니다.
+> R2 환경 변수가 없으면 자동으로 Supabase Storage로 폴백합니다.
 
-**원인:**
-- Next.js API Route (서버 환경)에서 `formData.get('file')`로 받은 `File` 객체를 Supabase Storage에 직접 전달
-- 서버 환경에서는 `File` 객체가 Supabase SDK와 호환되지 않음 (브라우저 전용 API)
-- `createClient()` (anon key)로 Storage 업로드 시 RLS 정책에 막힘
+### 6.1 R2 환경 변수 설정
 
-**해결책:**
+```env
+# 필수 환경 변수 (4개 모두 설정해야 R2 사용)
+R2_ACCOUNT_ID=your-account-id
+R2_ACCESS_KEY_ID=your-access-key
+R2_SECRET_ACCESS_KEY=your-secret-key
+R2_PUBLIC_URL=https://pub-xxx.r2.dev
+
+# 버킷 이름 (선택, 기본값 있음)
+R2_BUCKET_AVATARS=navig-avatars
+R2_BUCKET_VIDEOS=navig-videos
+```
+
+### 6.2 R2 업로드 패턴
+
+**단일 파일 업로드 (10MB 미만):**
 ```typescript
-// ❌ Bad: File 객체 직접 전달 + anon 클라이언트
-const file = formData.get('avatar') as File;
-const { error } = await supabase.storage
-  .from('avatars')
-  .upload(filePath, file, { upsert: true });
+import { uploadFile } from '@/lib/cloudflare/r2';
 
-// ✅ Good: Buffer 변환 + Admin 클라이언트
-const file = formData.get('avatar') as File;
+// File → Buffer 변환 후 업로드
 const arrayBuffer = await file.arrayBuffer();
 const buffer = Buffer.from(arrayBuffer);
 
-const adminClient = createAdminClient();
-const { error } = await adminClient.storage
-  .from('avatars')
-  .upload(filePath, buffer, {
-    upsert: true,
-    contentType: file.type,
-  });
+const { url, key } = await uploadFile('avatars', fileKey, buffer, file.type);
+```
+
+**멀티파트 업로드 (10MB 이상, 영상):**
+```typescript
+import {
+  initiateMultipartUpload,
+  createPresignedPartUrl,
+  completeMultipartUpload,
+} from '@/lib/cloudflare/r2';
+
+// 1. 업로드 시작
+const { uploadId, key } = await initiateMultipartUpload('videos', fileKey, contentType);
+
+// 2. 각 파트의 Presigned URL 생성 (클라이언트가 직접 업로드)
+const partUrl = await createPresignedPartUrl('videos', key, uploadId, partNumber);
+
+// 3. 업로드 완료
+const { url } = await completeMultipartUpload('videos', key, uploadId, parts);
+```
+
+### 6.3 Supabase Storage 폴백 패턴
+
+R2가 설정되지 않은 경우 기존 Supabase Storage 사용:
+
+```typescript
+// R2 환경 변수 확인
+const isR2Configured = !!(
+  process.env.R2_ACCOUNT_ID &&
+  process.env.R2_ACCESS_KEY_ID &&
+  process.env.R2_SECRET_ACCESS_KEY &&
+  process.env.R2_PUBLIC_URL
+);
+
+if (isR2Configured) {
+  // R2 업로드
+  const { url } = await uploadFile('avatars', fileKey, buffer, file.type);
+} else {
+  // Supabase Storage 폴백
+  const adminClient = createAdminClient();
+  await adminClient.storage.from('avatars').upload(fileKey, buffer, {...});
+}
+```
+
+### 6.4 서버 API에서 File → Buffer 변환 (필수)
+
+**원인:**
+- Next.js API Route (서버 환경)에서 `File` 객체를 직접 사용 불가
+- 서버 환경에서는 브라우저 전용 `File` API가 SDK와 호환되지 않음
+
+**해결책:**
+```typescript
+// ❌ Bad: File 객체 직접 전달
+const file = formData.get('avatar') as File;
+await uploadFile('avatars', key, file, file.type); // 에러!
+
+// ✅ Good: Buffer 변환 필수
+const file = formData.get('avatar') as File;
+const arrayBuffer = await file.arrayBuffer();
+const buffer = Buffer.from(arrayBuffer);
+await uploadFile('avatars', key, buffer, file.type);
 ```
 
 **규칙:**
@@ -437,7 +498,281 @@ const { data: projects } = await supabase
 
 ---
 
-## 11. 체크리스트
+## 11. Supabase 쿼리 패턴 관련
+
+### 11.1 문제: Nested Foreign Key Join이 작동하지 않음
+
+**원인:**
+- Supabase의 중첩 조인 (예: `reply_to:chat_messages!reply_to_id(sender:profiles!sender_id(...))`)
+- 복잡한 중첩 구조에서 데이터가 null로 반환됨
+
+**해결책:**
+```typescript
+// ❌ Bad: 중첩 조인 시도 (작동 안 함)
+const { data } = await supabase
+  .from('chat_messages')
+  .select(`
+    *,
+    reply_to:chat_messages!reply_to_id(
+      id, content,
+      sender:profiles!sender_id(id, name, avatar_url)
+    )
+  `)
+  .single();
+
+// ✅ Good: 별도 쿼리로 분리
+const { data: message } = await supabase
+  .from('chat_messages')
+  .select('*, sender:profiles!sender_id(id, name, avatar_url)')
+  .eq('id', messageId)
+  .single();
+
+// reply_to 정보는 별도 조회
+let replyTo = null;
+if (message.reply_to_id) {
+  const { data: replyMessage } = await supabase
+    .from('chat_messages')
+    .select('id, content, sender:profiles!sender_id(id, name, avatar_url)')
+    .eq('id', message.reply_to_id)
+    .single();
+  replyTo = replyMessage;
+}
+```
+
+**규칙:**
+- 2단계 이상의 중첩 조인은 피하고 별도 쿼리로 분리
+- 복잡한 관계 데이터는 순차적으로 조회
+
+---
+
+### 11.2 문제: upsert + ignoreDuplicates + single()로 500 에러
+
+**원인:**
+- `upsert({ ignoreDuplicates: true })`는 중복 시 아무 행도 반환하지 않음
+- `.single()`은 정확히 1행을 기대하므로 에러 발생
+
+**해결책:**
+```typescript
+// ❌ Bad: upsert + single() 조합 (중복 시 에러)
+const { data, error } = await supabase
+  .from('chat_message_reactions')
+  .upsert(
+    { message_id, user_id, emoji },
+    { ignoreDuplicates: true }
+  )
+  .select()
+  .single(); // 중복 시 "No rows found" 에러
+
+// ✅ Good: 존재 여부 먼저 확인
+const { data: existing } = await supabase
+  .from('chat_message_reactions')
+  .select('id')
+  .eq('message_id', messageId)
+  .eq('user_id', userId)
+  .eq('emoji', emoji)
+  .limit(1);
+
+if (existing && existing.length > 0) {
+  // 이미 존재 - 성공 응답 (멱등성)
+  return { data: existing[0], existing: true };
+}
+
+// 존재하지 않으면 새로 생성
+const { data: created } = await supabase
+  .from('chat_message_reactions')
+  .insert({ message_id, user_id, emoji })
+  .select()
+  .single();
+```
+
+**규칙:**
+- `upsert + ignoreDuplicates`와 `.single()` 절대 함께 사용 금지
+- 멱등성이 필요한 경우 존재 여부 먼저 확인 후 조건부 삽입
+- `.limit(1)` 또는 `.maybeSingle()` 사용 권장
+
+---
+
+## 12. 실시간 채팅 UX 패턴
+
+### 12.1 문제: 메시지 전송 후 즉시 표시되지 않음
+
+**원인:**
+- 서버 응답을 기다린 후 UI 업데이트
+- 네트워크 지연으로 사용자가 전송 실패로 오인
+
+**해결책 (Optimistic Update):**
+```typescript
+// ✅ Good: 낙관적 업데이트 패턴
+const handleSend = async (content: string) => {
+  // 1. 임시 ID로 즉시 UI에 추가
+  const tempId = `temp-${Date.now()}`;
+  const optimisticMessage = {
+    id: tempId,
+    content,
+    sender_id: currentUserId,
+    sender: currentUserProfile,
+    created_at: new Date().toISOString(),
+    // ...기타 필드
+  };
+
+  setMessages(prev => [...prev, optimisticMessage]);
+  scrollToBottom();
+
+  try {
+    // 2. 서버에 전송
+    const response = await fetch('/api/chat/messages', { ... });
+    const { message: serverMessage } = await response.json();
+
+    // 3. 임시 메시지를 실제 메시지로 교체
+    setMessages(prev =>
+      prev.map(m => m.id === tempId ? serverMessage : m)
+    );
+  } catch (error) {
+    // 4. 실패 시 임시 메시지 제거
+    setMessages(prev => prev.filter(m => m.id !== tempId));
+    toast.error('메시지 전송 실패');
+  }
+};
+```
+
+**규칙:**
+- 채팅/댓글 등 실시간 기능은 항상 Optimistic Update 적용
+- 임시 ID는 `temp-` 접두사 + 타임스탬프로 구분
+- 실패 시 반드시 롤백 처리
+
+---
+
+### 12.2 문제: 메시지 전송 후 입력창 포커스 사라짐
+
+**원인:**
+- 상태 업데이트(setContent(''))로 인한 리렌더링
+- 포커스가 다른 곳으로 이동
+
+**해결책:**
+```typescript
+// ✅ Good: setTimeout으로 리렌더 후 포커스
+const handleSend = async () => {
+  const messageContent = content.trim();
+
+  // 상태 초기화
+  setContent('');
+  setAttachments([]);
+
+  // 리렌더 후 포커스 복원
+  setTimeout(() => {
+    textareaRef.current?.focus();
+  }, 0);
+
+  // 백그라운드로 전송
+  await sendMessage(messageContent);
+};
+```
+
+**규칙:**
+- 입력 완료 후 `setTimeout(..., 0)`으로 포커스 복원
+- ref를 사용해 직접 DOM 요소에 포커스
+
+---
+
+### 12.3 문제: 메시지 연속 전송 시 지연/블로킹
+
+**원인:**
+- `isSending` 상태로 버튼 비활성화
+- 서버 응답까지 다음 입력 불가
+
+**해결책:**
+```typescript
+// ❌ Bad: 전송 완료까지 블로킹
+const [isSending, setIsSending] = useState(false);
+
+const handleSend = async () => {
+  setIsSending(true);
+  await sendMessage(content);
+  setContent('');
+  setIsSending(false); // 여기까지 입력 불가
+};
+
+<Button disabled={isSending}>전송</Button>
+
+// ✅ Good: 비차단 전송
+const handleSend = async () => {
+  if (!content.trim()) return;
+
+  // 즉시 입력 초기화 (블로킹 없음)
+  const messageToSend = content.trim();
+  setContent('');
+  setTimeout(() => textareaRef.current?.focus(), 0);
+
+  // 백그라운드 전송 (UI 블로킹 없음)
+  try {
+    await sendMessage(messageToSend);
+  } catch (error) {
+    setContent(messageToSend); // 실패 시 복원
+  }
+};
+
+<Button disabled={!content.trim()}>전송</Button>
+```
+
+**규칙:**
+- 채팅 입력은 `isSending` 상태로 블로킹하지 않음
+- 입력값은 즉시 초기화, 전송은 백그라운드
+- 실패 시에만 입력값 복원
+
+---
+
+### 12.4 메시지 그룹화 패턴 (연속 메시지)
+
+**문제:** 같은 사람이 연속으로 보낸 메시지에 매번 프로필 표시
+
+**해결책:**
+```typescript
+// ✅ Good: 5분 이내 연속 메시지는 프로필 생략
+{messages.map((message, index) => {
+  const prevMessage = index > 0 ? messages[index - 1] : null;
+  const isSameSender = prevMessage?.sender_id === message.sender_id;
+  const timeDiff = prevMessage
+    ? new Date(message.created_at).getTime() -
+      new Date(prevMessage.created_at).getTime()
+    : Infinity;
+  const isWithinTimeWindow = timeDiff < 5 * 60 * 1000; // 5분
+
+  // 같은 사람이 5분 이내에 보낸 메시지면 프로필 숨김
+  const showProfile = !isSameSender || !isWithinTimeWindow;
+
+  return (
+    <ChatMessage
+      key={message.id}
+      message={message}
+      showProfile={showProfile}
+    />
+  );
+})}
+```
+
+**컴포넌트 측:**
+```typescript
+interface ChatMessageProps {
+  message: ChatMessageWithDetails;
+  showProfile?: boolean; // 기본값 true
+}
+
+// 아바타 영역 - 공간만 확보하고 조건부 렌더링
+{!isOwnMessage && (
+  <div className="w-8 shrink-0">
+    {showProfile && <Avatar>...</Avatar>}
+  </div>
+)}
+```
+
+**규칙:**
+- 같은 발신자 + 5분 이내 = 프로필 생략
+- 프로필 생략 시에도 레이아웃용 공간 유지 (정렬 깨짐 방지)
+- 내 메시지는 항상 프로필 표시 안 함
+
+---
+
+## 13. 체크리스트
 
 ### API 개발 시
 - [ ] Admin 클라이언트 필요 여부 확인 (RLS 우회 필요?)
@@ -446,13 +781,18 @@ const { data: projects } = await supabase
 - [ ] console.error로 상세 로깅
 - [ ] 에러 응답에 상세 정보 포함 (개발 환경)
 
+### Supabase 쿼리 시 (§11)
+- [ ] 2단계 이상 중첩 조인 금지 → 별도 쿼리로 분리 (§11.1)
+- [ ] `upsert({ ignoreDuplicates })` + `.single()` 함께 사용 금지 (§11.2)
+- [ ] 멱등성 필요 시 존재 여부 먼저 확인 후 조건부 삽입
+
 ### 프로젝트 관련 기능 개발 시
 - [ ] `project_members` + `projects.client_id` 모두 조회
 - [ ] 프로젝트 생성 시 멤버 추가 에러 처리
 
 ### 파일 업로드 시
-- [ ] `File` → `Buffer` 변환 (`arrayBuffer()` → `Buffer.from()`) (§6.1)
-- [ ] Storage 업로드는 `createAdminClient()` 사용 (§6.1)
+- [ ] `File` → `Buffer` 변환 (`arrayBuffer()` → `Buffer.from()`) (§6.4)
+- [ ] Storage 업로드는 `createAdminClient()` 사용 (§6.4)
 - [ ] `contentType` 명시
 - [ ] 인증은 `createClient()`로 먼저 확인
 
@@ -474,13 +814,27 @@ const { data: projects } = await supabase
 - [ ] 빈 상태 UI 구현 (드롭다운, 리스트, 페이지)
 - [ ] 로딩/에러 상태 UI 구현
 
+### 실시간 채팅 개발 시 (§12)
+- [ ] Optimistic Update 패턴 적용 (§12.1)
+- [ ] 메시지 전송 후 `setTimeout(..., 0)`으로 입력창 포커스 (§12.2)
+- [ ] 전송 중 입력 블로킹 금지 - 비차단 패턴 사용 (§12.3)
+- [ ] 연속 메시지 그룹화 (5분 이내, 같은 발신자) (§12.4)
+- [ ] 내 메시지는 프로필 표시 안 함
+
 ---
 
-## 12. 관련 파일
+## 14. 관련 파일
 
 | 파일 | 설명 |
 |------|------|
 | `src/lib/supabase/server.ts` | Supabase 클라이언트 (일반 + Admin) |
+| `src/lib/cloudflare/r2.ts` | R2 스토리지 클라이언트 |
 | `src/app/api/projects/route.ts` | 프로젝트 API (참고용 패턴) |
+| `src/app/api/chat/messages/[id]/reactions/route.ts` | 리액션 API (멱등성 패턴) |
+| `src/app/api/chat/rooms/[id]/messages/route.ts` | 채팅 메시지 API (별도 쿼리 패턴) |
+| `src/app/api/chat/attachments/route.ts` | 채팅 첨부파일 R2 업로드 |
+| `src/components/chat/ChatRoom.tsx` | 채팅방 (Optimistic Update 패턴) |
+| `src/components/chat/ChatMessage.tsx` | 채팅 메시지 (그룹화 패턴) |
+| `src/components/chat/ChatInput.tsx` | 채팅 입력 (비차단 전송 패턴) |
 | `supabase/migrations/00002_rls_policies.sql` | RLS 정책 정의 |
 | `supabase/migrations/00003_fix_project_members_rls.sql` | RLS 수정 마이그레이션 |

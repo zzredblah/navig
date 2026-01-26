@@ -18,6 +18,9 @@ const pathLabels: Record<string, string> = {
   new: '새로 만들기',
   edit: '수정',
   members: '멤버',
+  videos: '영상',
+  feedbacks: '피드백',
+  compare: '버전 비교',
 };
 
 export interface BreadcrumbItem {
@@ -62,16 +65,18 @@ function Breadcrumb({
           href: index < paths.length - 1 ? currentPath : undefined,
         });
       } else {
-        // UUID가 있으면 이전 항목의 라벨에 "상세" 추가
+        // UUID가 있으면 "상세" 항목 추가 (해당 경로로 링크)
         if (generatedItems.length > 0) {
           const lastItem = generatedItems[generatedItems.length - 1];
+          // 이전 항목의 링크는 그대로 유지
           generatedItems[generatedItems.length - 1] = {
             ...lastItem,
-            href: lastItem.href, // 링크 유지
+            href: lastItem.href,
           };
+          // "상세"는 UUID 경로로 링크 (마지막이 아닐 때만)
           generatedItems.push({
             label: '상세',
-            href: undefined,
+            href: index < paths.length - 1 ? currentPath : undefined,
           });
         }
       }

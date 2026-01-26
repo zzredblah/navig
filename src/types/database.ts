@@ -25,6 +25,10 @@ export type DocumentType = 'request' | 'estimate' | 'contract';
 
 export type DocumentStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'signed';
 
+export type VideoStatus = 'uploading' | 'processing' | 'ready' | 'error';
+
+export type FeedbackStatus = 'open' | 'resolved' | 'wontfix';
+
 export type TemplateFieldType = 'text' | 'number' | 'date' | 'textarea' | 'select' | 'file';
 
 export interface TemplateField {
@@ -352,6 +356,192 @@ export interface Database {
           }
         ];
       };
+      video_versions: {
+        Row: {
+          id: string;
+          project_id: string;
+          version_number: number;
+          version_name: string | null;
+          original_filename: string;
+          file_url: string | null;
+          file_key: string | null;
+          thumbnail_url: string | null;
+          thumbnail_key: string | null;
+          duration: number | null;
+          resolution: string | null;
+          file_size: number;
+          codec: string | null;
+          change_notes: string;
+          status: VideoStatus;
+          upload_id: string | null;
+          uploaded_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          version_number?: number;
+          version_name?: string | null;
+          original_filename: string;
+          file_url?: string | null;
+          file_key?: string | null;
+          thumbnail_url?: string | null;
+          thumbnail_key?: string | null;
+          duration?: number | null;
+          resolution?: string | null;
+          file_size: number;
+          codec?: string | null;
+          change_notes: string;
+          status?: VideoStatus;
+          upload_id?: string | null;
+          uploaded_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          version_number?: number;
+          version_name?: string | null;
+          original_filename?: string;
+          file_url?: string | null;
+          file_key?: string | null;
+          thumbnail_url?: string | null;
+          thumbnail_key?: string | null;
+          duration?: number | null;
+          resolution?: string | null;
+          file_size?: number;
+          codec?: string | null;
+          change_notes?: string;
+          status?: VideoStatus;
+          upload_id?: string | null;
+          uploaded_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'video_versions_project_id_fkey';
+            columns: ['project_id'];
+            referencedRelation: 'projects';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'video_versions_uploaded_by_fkey';
+            columns: ['uploaded_by'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      video_feedbacks: {
+        Row: {
+          id: string;
+          video_id: string;
+          project_id: string;
+          content: string;
+          timestamp_seconds: number;
+          position_x: number | null;
+          position_y: number | null;
+          status: FeedbackStatus;
+          resolved_at: string | null;
+          resolved_by: string | null;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          video_id: string;
+          project_id: string;
+          content: string;
+          timestamp_seconds: number;
+          position_x?: number | null;
+          position_y?: number | null;
+          status?: FeedbackStatus;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          video_id?: string;
+          project_id?: string;
+          content?: string;
+          timestamp_seconds?: number;
+          position_x?: number | null;
+          position_y?: number | null;
+          status?: FeedbackStatus;
+          resolved_at?: string | null;
+          resolved_by?: string | null;
+          created_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'video_feedbacks_video_id_fkey';
+            columns: ['video_id'];
+            referencedRelation: 'video_versions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'video_feedbacks_project_id_fkey';
+            columns: ['project_id'];
+            referencedRelation: 'projects';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'video_feedbacks_created_by_fkey';
+            columns: ['created_by'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      feedback_replies: {
+        Row: {
+          id: string;
+          feedback_id: string;
+          content: string;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          feedback_id: string;
+          content: string;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          feedback_id?: string;
+          content?: string;
+          created_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'feedback_replies_feedback_id_fkey';
+            columns: ['feedback_id'];
+            referencedRelation: 'video_feedbacks';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'feedback_replies_created_by_fkey';
+            columns: ['created_by'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -369,6 +559,14 @@ export interface Database {
         Args: { project_uuid: string };
         Returns: boolean;
       };
+      is_project_member: {
+        Args: { project_uuid: string };
+        Returns: boolean;
+      };
+      is_project_admin: {
+        Args: { project_uuid: string };
+        Returns: boolean;
+      };
     };
     Enums: {
       user_role: UserRole;
@@ -376,6 +574,8 @@ export interface Database {
       member_role: MemberRole;
       document_type: DocumentType;
       document_status: DocumentStatus;
+      video_status: VideoStatus;
+      feedback_status: FeedbackStatus;
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -407,6 +607,9 @@ export type DocumentTemplate = Tables<'document_templates'>;
 export type Document = Tables<'documents'>;
 export type DocumentVersion = Tables<'document_versions'>;
 export type Signature = Tables<'signatures'>;
+export type VideoVersion = Tables<'video_versions'>;
+export type VideoFeedback = Tables<'video_feedbacks'>;
+export type FeedbackReply = Tables<'feedback_replies'>;
 
 // 확장 타입 (조인된 데이터)
 export type ProjectWithClient = Project & {

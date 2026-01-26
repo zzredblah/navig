@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Settings, UserPlus, Users, Trash2, Pencil, FileText } from 'lucide-react';
+import { ArrowLeft, Settings, UserPlus, Users, Trash2, Pencil, FileText, Video } from 'lucide-react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
@@ -206,6 +206,24 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
               <div>
                 <h3 className="font-semibold text-gray-900">문서 관리</h3>
                 <p className="text-sm text-gray-500">요청서, 견적서, 계약서를 관리합니다</p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm">
+              바로가기
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* 영상 버전 관리 카드 */}
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push(`/projects/${resolvedParams.id}/videos`)}>
+          <CardContent className="flex items-center justify-between p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center">
+                <Video className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">영상 버전 관리</h3>
+                <p className="text-sm text-gray-500">영상 파일을 업로드하고 버전을 관리합니다</p>
               </div>
             </div>
             <Button variant="outline" size="sm">

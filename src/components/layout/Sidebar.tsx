@@ -9,12 +9,16 @@ import {
   FolderOpen,
   FileText,
   Users,
+  MessageSquare,
   Trash2,
   Settings,
   HelpCircle,
   X,
+  Video,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { useChatUnread } from '@/hooks/use-chat-unread';
 import type { SidebarConfig } from '@/types/database';
 
 interface SidebarProps {
@@ -35,6 +39,11 @@ const menuItems = [
     icon: FolderOpen,
   },
   {
+    title: '영상',
+    href: '/videos',
+    icon: Video,
+  },
+  {
     title: '문서',
     href: '/documents',
     icon: FileText,
@@ -43,6 +52,11 @@ const menuItems = [
     title: '팀 멤버',
     href: '/team',
     icon: Users,
+  },
+  {
+    title: '채팅',
+    href: '/chat',
+    icon: MessageSquare,
   },
 ];
 
@@ -70,6 +84,7 @@ const ALWAYS_VISIBLE = ['/dashboard', '/settings'];
 export function Sidebar({ isOpen, onClose, sidebarConfig }: SidebarProps) {
   const pathname = usePathname();
   const hiddenItems = sidebarConfig?.hidden || [];
+  const { unreadCount } = useChatUnread();
 
   const filteredMenuItems = menuItems.filter(
     (item) => ALWAYS_VISIBLE.includes(item.href) || !hiddenItems.includes(item.href)
@@ -118,20 +133,28 @@ export function Sidebar({ isOpen, onClose, sidebarConfig }: SidebarProps) {
           <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
             {filteredMenuItems.map((item) => {
               const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+              const isChat = item.href === '/chat';
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={onClose}
                   className={cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                    'flex items-center justify-between px-3 py-2 rounded-md text-sm font-medium transition-colors',
                     isActive
                       ? 'bg-primary-50 text-primary-700'
                       : 'text-gray-700 hover:bg-gray-100'
                   )}
                 >
-                  <item.icon className="h-5 w-5" />
-                  {item.title}
+                  <div className="flex items-center gap-3">
+                    <item.icon className="h-5 w-5" />
+                    {item.title}
+                  </div>
+                  {isChat && unreadCount > 0 && (
+                    <Badge className="bg-primary-500 text-white text-xs px-1.5 py-0.5 min-w-[20px] flex items-center justify-center">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </Badge>
+                  )}
                 </Link>
               );
             })}

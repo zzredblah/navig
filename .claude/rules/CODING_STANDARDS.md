@@ -1,7 +1,7 @@
 # NAVIG 코딩 표준 (Coding Standards)
 
-**버전:** 2.0
-**최종 수정:** 2025-01-23
+**버전:** 2.1
+**최종 수정:** 2026-01-26
 
 ---
 
@@ -27,9 +27,18 @@
 데이터베이스:
   - Supabase (PostgreSQL + Auth + Realtime)
 
+파일 스토리지:
+  - Cloudflare R2 (S3 호환, 아바타/영상)
+  - CDN: Cloudflare CDN (R2 퍼블릭 버킷 연동)
+  - 라이브러리: @aws-sdk/client-s3
+
+영상 관리:
+  - 멀티파트 업로드 (청크 10MB)
+  - 메타데이터: HTML5 Video API
+  - 썸네일: Canvas API
+
 향후 계획:
-  - 스토리지: Cloudflare R2 / AWS S3
-  - 영상 처리: FFmpeg + BullMQ
+  - 영상 처리: FFmpeg WASM / Cloudflare Workers
   - 백엔드 분리: NestJS 10 + TypeORM + Redis
 ```
 
@@ -244,9 +253,13 @@ NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 
-# 향후 추가
-# R2_ACCESS_KEY_ID=
-# R2_SECRET_ACCESS_KEY=
+# Cloudflare R2
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_AVATARS=navig-avatars
+R2_BUCKET_VIDEOS=navig-videos
+R2_PUBLIC_URL=https://pub-xxx.r2.dev
 ```
 
 ---
