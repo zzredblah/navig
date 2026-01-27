@@ -69,10 +69,17 @@ export function useChatUnread() {
 
     setupRealtime();
 
+    // ChatRoom에서 읽음 처리 시 발생하는 커스텀 이벤트 리스닝
+    const handleChatRead = () => {
+      fetchUnreadCount();
+    };
+    window.addEventListener('chat-read-update', handleChatRead);
+
     return () => {
       if (channel) {
         supabase.removeChannel(channel);
       }
+      window.removeEventListener('chat-read-update', handleChatRead);
     };
   }, [fetchUnreadCount]);
 

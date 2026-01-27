@@ -31,6 +31,17 @@ export type FeedbackStatus = 'open' | 'resolved' | 'wontfix';
 
 export type TemplateFieldType = 'text' | 'number' | 'date' | 'textarea' | 'select' | 'file';
 
+export type NotificationType =
+  | 'new_feedback'
+  | 'urgent_feedback'
+  | 'feedback_status'
+  | 'feedback_reply'
+  | 'new_version'
+  | 'document_status'
+  | 'project_invite'
+  | 'deadline_reminder'
+  | 'chat_message';
+
 export interface TemplateField {
   name: string;
   label: string;
@@ -542,6 +553,95 @@ export interface Database {
           }
         ];
       };
+      notifications: {
+        Row: {
+          id: string;
+          user_id: string;
+          type: NotificationType;
+          title: string;
+          content: string | null;
+          link: string | null;
+          metadata: Record<string, unknown>;
+          is_read: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          type: NotificationType;
+          title: string;
+          content?: string | null;
+          link?: string | null;
+          metadata?: Record<string, unknown>;
+          is_read?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          type?: NotificationType;
+          title?: string;
+          content?: string | null;
+          link?: string | null;
+          metadata?: Record<string, unknown>;
+          is_read?: boolean;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'notifications_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      notification_settings: {
+        Row: {
+          user_id: string;
+          email_new_feedback: boolean;
+          email_urgent_feedback: boolean;
+          email_version_upload: boolean;
+          email_document_status: boolean;
+          email_deadline_reminder: boolean;
+          email_chat_message: boolean;
+          inapp_enabled: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          email_new_feedback?: boolean;
+          email_urgent_feedback?: boolean;
+          email_version_upload?: boolean;
+          email_document_status?: boolean;
+          email_deadline_reminder?: boolean;
+          email_chat_message?: boolean;
+          inapp_enabled?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          email_new_feedback?: boolean;
+          email_urgent_feedback?: boolean;
+          email_version_upload?: boolean;
+          email_document_status?: boolean;
+          email_deadline_reminder?: boolean;
+          email_chat_message?: boolean;
+          inapp_enabled?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'notification_settings_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -576,6 +676,7 @@ export interface Database {
       document_status: DocumentStatus;
       video_status: VideoStatus;
       feedback_status: FeedbackStatus;
+      notification_type: NotificationType;
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -610,6 +711,8 @@ export type Signature = Tables<'signatures'>;
 export type VideoVersion = Tables<'video_versions'>;
 export type VideoFeedback = Tables<'video_feedbacks'>;
 export type FeedbackReply = Tables<'feedback_replies'>;
+export type Notification = Tables<'notifications'>;
+export type NotificationSettings = Tables<'notification_settings'>;
 
 // 확장 타입 (조인된 데이터)
 export type ProjectWithClient = Project & {

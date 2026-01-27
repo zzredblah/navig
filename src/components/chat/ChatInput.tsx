@@ -18,7 +18,6 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { EmojiPicker } from './EmojiPicker';
 import { ChatAttachment, ChatMessageWithDetails, formatFileSize } from '@/types/chat';
-import { cn } from '@/lib/utils';
 
 interface ChatInputProps {
   roomId: string;
@@ -26,6 +25,8 @@ interface ChatInputProps {
   onCancelReply?: () => void;
   onSend: (content: string, attachments?: ChatAttachment[], replyToId?: string) => Promise<void>;
   disabled?: boolean;
+  pendingFiles?: File[];
+  onPendingFilesProcessed?: () => void;
 }
 
 export function ChatInput({
@@ -34,17 +35,30 @@ export function ChatInput({
   onCancelReply,
   onSend,
   disabled,
+  pendingFiles,
+  onPendingFilesProcessed,
 }: ChatInputProps) {
   const [content, setContent] = useState('');
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
+  const dragCounterRef = useRef(0);
 
   // 컴포넌트 마운트 시 포커스
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  // 외부에서 드롭된 파일 처리
+  useEffect(() => {
+    if (pendingFiles && pendingFiles.length > 0) {
+      handleFilesUpload(pendingFiles);
+      onPendingFilesProcessed?.();
+    }
+  }, [pendingFiles]);
 
   const handleSend = async () => {
     if ((!content.trim() && attachments.length === 0) || disabled) return;
@@ -90,13 +104,49 @@ export function ChatInput({
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    await handleFilesUpload(files);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // 드래그 앤 드롭 핸들러
+  const handleFilesUpload = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+
     setIsUploading(true);
     try {
-      // 각 파일을 순차적으로 업로드
-      for (const file of Array.from(files)) {
+      for (const file of fileArray) {
         // 파일 크기 검증 (20MB)
         if (file.size > 20 * 1024 * 1024) {
           alert(`${file.name}: 파일 크기는 20MB를 초과할 수 없습니다.`);
+          continue;
+        }
+
+        // 지원하는 파일 타입 검증
+        const allowedTypes = [
+          'image/', 'video/',
+          'application/pdf',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-excel',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-powerpoint',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        ];
+
+        const isAllowed = allowedTypes.some(type =>
+          type.endsWith('/') ? file.type.startsWith(type) : file.type === type
+        );
+
+        if (!isAllowed) {
+          alert(`${file.name}: 지원하지 않는 파일 형식입니다.`);
           continue;
         }
 
@@ -123,18 +173,55 @@ export function ChatInput({
       alert('파일 업로드 중 오류가 발생했습니다.');
     } finally {
       setIsUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
     }
   };
 
-  const removeAttachment = (index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
-  };
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragging(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    dragCounterRef.current = 0;
+
+    if (disabled || isUploading) return;
+
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleFilesUpload(files);
+    }
+  }, [disabled, isUploading]);
 
   return (
-    <div className="border-t border-gray-200 bg-white p-3">
+    <div
+      ref={dropZoneRef}
+      className="border-t border-gray-200 bg-white p-3 relative"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       {/* 답장 표시 */}
       {replyTo && (
         <div className="flex items-center gap-2 mb-2 p-2 bg-gray-50 rounded-lg">

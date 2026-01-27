@@ -1,7 +1,7 @@
 # NAVIG 오류 방지 가이드 (Error Prevention Guide)
 
-**버전:** 2.2
-**최종 수정:** 2026-01-26
+**버전:** 2.3
+**최종 수정:** 2026-01-27
 **목적:** 개발 중 발생한 오류와 해결책을 문서화하여 재발 방지
 
 ---
@@ -772,7 +772,165 @@ interface ChatMessageProps {
 
 ---
 
-## 13. 체크리스트
+## 13. API 응답 구조 관련
+
+### 13.1 문제: API 응답 데이터 접근 실패
+
+**원인:**
+- NAVIG API는 `{ data: 실제데이터 }` 형태로 응답을 래핑함
+- 클라이언트에서 `response.json()` 후 바로 `data.id` 접근 시 `undefined`
+
+**해결책:**
+```typescript
+// ❌ Bad: 응답 구조 무시하고 직접 접근
+const response = await fetch('/api/profile');
+const data = await response.json();
+console.log(data.id);        // undefined!
+console.log(data.name);      // undefined!
+
+// ✅ Good: 응답 구조에 맞게 접근
+const response = await fetch('/api/profile');
+const json = await response.json();
+const profile = json.data;   // API 응답은 { data: profile } 형태
+console.log(profile.id);     // 실제 ID
+console.log(profile.name);   // 실제 이름
+```
+
+**NAVIG API 응답 패턴:**
+```typescript
+// 단일 데이터
+{ data: { id, name, ... } }
+
+// 목록 데이터
+{ data: [...], pagination: { ... } }
+
+// 에러
+{ error: '에러 메시지' }
+```
+
+**규칙:**
+- API 호출 후 반드시 응답 구조 확인
+- `json.data`로 실제 데이터 접근
+- 새 API 작성 시에도 동일한 `{ data: ... }` 패턴 유지
+
+---
+
+### 13.2 문제: React state 업데이트 타이밍 이슈
+
+**원인:**
+- `setState`는 비동기이므로 호출 직후 값이 반영되지 않음
+- API 응답 후 state 설정하고 바로 해당 값을 사용하면 이전 값 참조
+
+**해결책:**
+```typescript
+// ❌ Bad: setState 직후 state 값 사용
+const [userId, setUserId] = useState('');
+
+const fetchUser = async () => {
+  const json = await fetch('/api/profile').then(r => r.json());
+  setUserId(json.data.id);
+
+  // userId는 아직 '' (빈 문자열)!
+  console.log(userId);
+  fetchMessages(userId); // 빈 문자열로 호출됨
+};
+
+// ✅ Good: 로컬 변수 사용 또는 별도 상태로 로딩 제어
+const [userId, setUserId] = useState('');
+const [isUserLoaded, setIsUserLoaded] = useState(false);
+
+const fetchUser = async () => {
+  const json = await fetch('/api/profile').then(r => r.json());
+  const id = json.data.id;  // 로컬 변수에 저장
+
+  setUserId(id);
+  setIsUserLoaded(true);
+
+  // 로컬 변수 사용
+  fetchMessages(id);
+};
+
+// 렌더링 시 로딩 체크
+if (!isUserLoaded) return <Loading />;
+```
+
+**규칙:**
+- `setState` 직후 해당 state 값에 의존하지 않기
+- 연속 작업 시 로컬 변수 사용
+- 의존성 있는 데이터는 별도 로딩 상태로 제어
+
+---
+
+## 14. React Hydration 에러
+
+### 14.1 문제: Radix UI 컴포넌트 Hydration 불일치
+
+**원인:**
+- Radix UI (DropdownMenu, Collapsible 등)가 내부적으로 ID 생성
+- 서버와 클라이언트에서 생성된 ID가 다름
+- React hydration 시 DOM 불일치 에러 발생
+
+**에러 메시지:**
+```
+Hydration failed because the server rendered HTML didn't match the client.
+- Server: id="radix-:r1:"
+- Client: id="radix-:r5:"
+```
+
+**해결책:**
+```typescript
+// ✅ Good: mounted 상태로 클라이언트 렌더링만 허용
+'use client';
+
+import { useState, useEffect } from 'react';
+
+export function NotificationBell() {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // 서버에서는 단순 버튼만 렌더링
+  if (!mounted) {
+    return (
+      <Button variant="ghost" size="icon">
+        <Bell className="h-5 w-5" />
+      </Button>
+    );
+  }
+
+  // 클라이언트에서만 Radix UI 컴포넌트 렌더링
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon">
+          <Bell className="h-5 w-5" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        {/* ... */}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+```
+
+**적용 대상 컴포넌트:**
+- `DropdownMenu` (알림, 프로필 드롭다운)
+- `Collapsible` (접을 수 있는 섹션)
+- `Dialog` / `AlertDialog`
+- `Popover`
+- `Tooltip`
+
+**규칙:**
+- Radix UI 컴포넌트 사용 시 `mounted` 패턴 적용
+- 서버 렌더링 시에는 정적 대체 UI 표시
+- `useEffect`로 클라이언트 마운트 후에만 인터랙티브 UI 렌더링
+
+---
+
+## 15. 체크리스트
 
 ### API 개발 시
 - [ ] Admin 클라이언트 필요 여부 확인 (RLS 우회 필요?)
@@ -821,9 +979,19 @@ interface ChatMessageProps {
 - [ ] 연속 메시지 그룹화 (5분 이내, 같은 발신자) (§12.4)
 - [ ] 내 메시지는 프로필 표시 안 함
 
+### API 응답 처리 시 (§13)
+- [ ] API 응답 구조 확인: `json.data`로 실제 데이터 접근 (§13.1)
+- [ ] `setState` 직후 해당 state 값에 의존하지 않기 (§13.2)
+- [ ] 연속 작업 시 로컬 변수 사용
+
+### Radix UI 사용 시 (§14)
+- [ ] Hydration 에러 방지: `mounted` 상태 패턴 적용 (§14.1)
+- [ ] DropdownMenu, Collapsible, Dialog 등에 필수 적용
+- [ ] 서버 렌더링 시 정적 대체 UI 표시
+
 ---
 
-## 14. 관련 파일
+## 16. 관련 파일
 
 | 파일 | 설명 |
 |------|------|

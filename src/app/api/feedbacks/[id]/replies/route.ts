@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { z } from 'zod';
+import { NotificationService } from '@/lib/notifications/service';
 
 // 답글 생성 스키마
 const createReplySchema = z.object({
@@ -147,10 +148,10 @@ export async function POST(
 
     const adminClient = createAdminClient();
 
-    // 피드백 조회 (권한 확인용)
+    // 피드백 조회 (권한 확인용 + 알림 발송용)
     const { data: feedback, error: feedbackError } = await adminClient
       .from('video_feedbacks')
-      .select('id, project_id')
+      .select('id, project_id, video_id, created_by')
       .eq('id', feedbackId)
       .single();
 
@@ -206,6 +207,29 @@ export async function POST(
         { error: '답글 작성 중 오류가 발생했습니다' },
         { status: 500 }
       );
+    }
+
+    // 피드백 작성자에게 알림 (답글 작성자 본인 제외, 비동기)
+    if (feedback.created_by !== user.id) {
+      try {
+        const truncatedContent = content.length > 50 ? content.substring(0, 50) + '...' : content;
+
+        await NotificationService.create({
+          userId: feedback.created_by,
+          type: 'feedback_reply',
+          title: '피드백에 답글이 달렸습니다',
+          content: truncatedContent,
+          link: `/projects/${feedback.project_id}/videos/${feedback.video_id}`,
+          metadata: {
+            feedbackId,
+            replyId: reply.id,
+            videoId: feedback.video_id,
+          },
+        });
+      } catch (notifError) {
+        console.error('[Replies POST] 알림 생성 실패:', notifError);
+        // 알림 실패는 메인 로직에 영향 없음
+      }
     }
 
     return NextResponse.json({ reply }, { status: 201 });

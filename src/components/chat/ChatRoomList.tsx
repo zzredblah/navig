@@ -12,10 +12,14 @@ import {
   Loader2,
   FolderOpen,
   Search,
+  Plus,
+  X,
+  Check,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { ChatRoomWithDetails, formatChatTime } from '@/types/chat';
 import { cn } from '@/lib/utils';
 
@@ -24,11 +28,25 @@ interface ChatRoomListProps {
   selectedRoomId?: string | null;
 }
 
+interface TeamMember {
+  id: string;
+  name: string | null;
+  email: string;
+  avatar_url: string | null;
+}
+
 export function ChatRoomList({ onRoomSelect, selectedRoomId }: ChatRoomListProps) {
   const pathname = usePathname();
   const [rooms, setRooms] = useState<ChatRoomWithDetails[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+
+  // 새 채팅 생성 관련 상태
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [memberSearchQuery, setMemberSearchQuery] = useState('');
 
   useEffect(() => {
     fetchRooms();
@@ -48,6 +66,75 @@ export function ChatRoomList({ onRoomSelect, selectedRoomId }: ChatRoomListProps
       setIsLoading(false);
     }
   };
+
+  // 팀 멤버 목록 조회
+  const fetchTeamMembers = async () => {
+    try {
+      const response = await fetch('/api/team/members');
+      if (response.ok) {
+        const data = await response.json();
+        setTeamMembers(data.members || []);
+      }
+    } catch (error) {
+      console.error('팀 멤버 조회 실패:', error);
+    }
+  };
+
+  // 새 채팅 모드 열기
+  const handleOpenNewChat = () => {
+    setShowNewChat(true);
+    setSelectedMembers([]);
+    setMemberSearchQuery('');
+    fetchTeamMembers();
+  };
+
+  // 멤버 선택/해제
+  const toggleMember = (memberId: string) => {
+    setSelectedMembers(prev =>
+      prev.includes(memberId)
+        ? prev.filter(id => id !== memberId)
+        : [...prev, memberId]
+    );
+  };
+
+  // 새 채팅방 생성
+  const handleCreateChat = async () => {
+    if (selectedMembers.length === 0) return;
+
+    setIsCreatingChat(true);
+    try {
+      const response = await fetch('/api/chat/rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_ids: selectedMembers,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // 채팅방 목록 새로고침
+        await fetchRooms();
+        // 새로 생성된 채팅방으로 이동
+        onRoomSelect?.(data.room.id);
+        setShowNewChat(false);
+      }
+    } catch (error) {
+      console.error('채팅방 생성 실패:', error);
+    } finally {
+      setIsCreatingChat(false);
+    }
+  };
+
+  // 필터된 팀 멤버
+  const filteredMembers = teamMembers.filter(member => {
+    if (!memberSearchQuery) return true;
+    const query = memberSearchQuery.toLowerCase();
+    return (
+      member.name?.toLowerCase().includes(query) ||
+      member.email.toLowerCase().includes(query)
+    );
+  });
 
   const filteredRooms = rooms.filter((room) => {
     if (!searchQuery) return true;
@@ -120,18 +207,146 @@ export function ChatRoomList({ onRoomSelect, selectedRoomId }: ChatRoomListProps
     );
   }
 
+  // 새 채팅 생성 화면
+  if (showNewChat) {
+    return (
+      <div className="flex flex-col h-full">
+        {/* 헤더 */}
+        <div className="p-3 border-b border-gray-200">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-medium text-gray-900">새 채팅</h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={() => setShowNewChat(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              value={memberSearchQuery}
+              onChange={(e) => setMemberSearchQuery(e.target.value)}
+              placeholder="이름 또는 이메일로 검색..."
+              className="pl-9"
+            />
+          </div>
+        </div>
+
+        {/* 선택된 멤버 */}
+        {selectedMembers.length > 0 && (
+          <div className="p-2 border-b border-gray-100 flex flex-wrap gap-1">
+            {selectedMembers.map(memberId => {
+              const member = teamMembers.find(m => m.id === memberId);
+              if (!member) return null;
+              return (
+                <span
+                  key={memberId}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary-100 text-primary-700 text-xs rounded-full"
+                >
+                  {member.name || member.email}
+                  <button
+                    onClick={() => toggleMember(memberId)}
+                    className="hover:text-primary-900"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {/* 멤버 목록 */}
+        <div className="flex-1 overflow-y-auto">
+          {filteredMembers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 px-4">
+              <Users className="h-8 w-8 text-gray-300 mb-2" />
+              <p className="text-sm text-gray-500">
+                {memberSearchQuery ? '검색 결과가 없습니다' : '팀 멤버가 없습니다'}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {filteredMembers.map(member => {
+                const isSelected = selectedMembers.includes(member.id);
+                return (
+                  <button
+                    key={member.id}
+                    onClick={() => toggleMember(member.id)}
+                    className={cn(
+                      'w-full flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors text-left',
+                      isSelected && 'bg-primary-50'
+                    )}
+                  >
+                    <Avatar className="h-9 w-9">
+                      <AvatarImage src={member.avatar_url || undefined} />
+                      <AvatarFallback className="bg-primary-100 text-primary-700 text-sm">
+                        {member.name?.slice(0, 2) || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {member.name || '이름 없음'}
+                      </p>
+                      <p className="text-xs text-gray-500 truncate">{member.email}</p>
+                    </div>
+                    {isSelected && (
+                      <div className="w-5 h-5 rounded-full bg-primary-600 flex items-center justify-center">
+                        <Check className="h-3 w-3 text-white" />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* 생성 버튼 */}
+        <div className="p-3 border-t border-gray-200">
+          <Button
+            className="w-full"
+            disabled={selectedMembers.length === 0 || isCreatingChat}
+            onClick={handleCreateChat}
+          >
+            {isCreatingChat ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <MessageSquare className="h-4 w-4 mr-2" />
+            )}
+            {selectedMembers.length === 1 ? '1:1 채팅 시작' : `그룹 채팅 시작 (${selectedMembers.length}명)`}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full">
-      {/* 검색 */}
+      {/* 검색 + 새 채팅 버튼 */}
       <div className="p-3 border-b border-gray-200">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="채팅방 검색..."
-            className="pl-9"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="채팅방 검색..."
+              className="pl-9"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            className="h-9 w-9 shrink-0"
+            onClick={handleOpenNewChat}
+            title="새 채팅"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 

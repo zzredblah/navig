@@ -29,6 +29,7 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
     .single();
 
   const userData = {
+    id: user.id,
     name: profile?.name || user.email?.split('@')[0] || '사용자',
     email: user.email || '',
     avatar_url: profile?.avatar_url,

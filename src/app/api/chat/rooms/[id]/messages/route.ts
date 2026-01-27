@@ -51,19 +51,43 @@ export async function GET(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const adminClient = createAdminClient() as any;
 
-    // 멤버십 확인
-    const { data: membership } = await adminClient
+    // 멤버십 확인 (cleared_at도 함께 조회 - 컬럼이 없을 수 있음)
+    const { data: membership, error: membershipError } = await adminClient
       .from('chat_room_members')
-      .select('id')
+      .select('id, cleared_at')
       .eq('room_id', roomId)
       .eq('user_id', user.id)
       .single();
 
-    if (!membership) {
+    // cleared_at 컬럼이 없는 경우 id만 조회
+    let actualMembership = membership;
+    if (membershipError && membershipError.message?.includes('cleared_at')) {
+      const { data: fallbackMembership } = await adminClient
+        .from('chat_room_members')
+        .select('id')
+        .eq('room_id', roomId)
+        .eq('user_id', user.id)
+        .single();
+      actualMembership = fallbackMembership ? { ...fallbackMembership, cleared_at: null } : null;
+    }
+
+    if (!actualMembership) {
       return NextResponse.json(
         { error: '채팅방에 접근 권한이 없습니다' },
         { status: 403 }
       );
+    }
+
+    // 사용자가 "나에게만 삭제"한 메시지 ID 목록 조회 (테이블이 없을 수 있음)
+    let deletedMessageIds: string[] = [];
+    const { data: deletedForMe, error: deletedError } = await adminClient
+      .from('chat_message_deletions')
+      .select('message_id')
+      .eq('user_id', user.id);
+
+    // 테이블이 없거나 에러가 발생해도 빈 배열 사용
+    if (!deletedError && deletedForMe) {
+      deletedMessageIds = deletedForMe.map((d: { message_id: string }) => d.message_id);
     }
 
     // 쿼리 파라미터
@@ -84,11 +108,21 @@ export async function GET(
       .order('created_at', { ascending: false })
       .limit(limit + 1); // 다음 페이지 확인용 +1
 
+    // cleared_at 이후 메시지만 조회 (대화내용 전체 삭제 적용)
+    if (actualMembership.cleared_at) {
+      query = query.gt('created_at', actualMembership.cleared_at);
+    }
+
     if (cursor) {
       query = query.lt('created_at', cursor);
     }
 
-    const { data: messages, error: queryError } = await query;
+    const { data: rawMessages, error: queryError } = await query;
+
+    // "나에게만 삭제"된 메시지 필터링
+    const messages = (rawMessages || []).filter(
+      (m: { id: string }) => !deletedMessageIds.includes(m.id)
+    );
 
     if (queryError) {
       console.error('[Chat Messages GET] 조회 오류:', queryError);

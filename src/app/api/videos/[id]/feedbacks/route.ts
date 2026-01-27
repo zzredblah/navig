@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { z } from 'zod';
+import { NotificationService } from '@/lib/notifications/service';
 
 // 쿼리 파라미터 스키마
 const querySchema = z.object({
@@ -263,6 +264,31 @@ export async function POST(
         { error: '피드백 작성 중 오류가 발생했습니다' },
         { status: 500 }
       );
+    }
+
+    // 알림 생성 (비동기, 메인 로직에 영향 없음)
+    try {
+      const notificationType = is_urgent ? 'urgent_feedback' : 'new_feedback';
+      const truncatedContent = content.length > 50 ? content.substring(0, 50) + '...' : content;
+
+      await NotificationService.notifyProjectMembers(
+        video.project_id,
+        {
+          type: notificationType,
+          title: is_urgent ? '긴급 피드백이 등록되었습니다' : '새 피드백이 등록되었습니다',
+          content: truncatedContent,
+          link: `/projects/${video.project_id}/videos/${videoId}`,
+          metadata: {
+            videoId,
+            feedbackId: feedback.id,
+            isUrgent: is_urgent,
+          },
+        },
+        user.id // 작성자 제외
+      );
+    } catch (notifError) {
+      console.error('[Feedbacks POST] 알림 생성 실패:', notifError);
+      // 알림 실패는 메인 로직에 영향 없음
     }
 
     return NextResponse.json({ feedback }, { status: 201 });

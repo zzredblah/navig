@@ -1,46 +1,284 @@
-import Link from 'next/link';
+import { Suspense } from 'react';
 import { createClient } from '@/lib/supabase/server';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { FolderOpen, Users, Clock, Plus, ArrowRight, FileText, TrendingUp } from 'lucide-react';
 import { ProjectStatusChart, DocumentStatusChart } from '@/components/dashboard/DashboardCharts';
+import { StatCards } from '@/components/dashboard/StatCards';
+import { UrgentSection } from '@/components/dashboard/UrgentSection';
+import { ActivityFeed } from '@/components/dashboard/ActivityFeed';
+import { RecentProjects } from '@/components/dashboard/RecentProjects';
+import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
 
-const statusLabels: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
-  planning: { label: '기획', variant: 'secondary' },
-  production: { label: '제작', variant: 'default' },
-  review: { label: '검수', variant: 'outline' },
-  completed: { label: '완료', variant: 'secondary' },
-};
-
-export default async function DashboardPage() {
+async function DashboardContent() {
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-gray-500">로그인이 필요합니다</p>
+      </div>
+    );
+  }
 
   // 프로필 정보 가져오기
   const { data: profile } = await supabase
     .from('profiles')
     .select('*')
-    .eq('id', user!.id)
+    .eq('id', user.id)
     .single();
 
-  // 사용자의 프로젝트 가져오기 (소유 + 멤버)
+  // 1. 프로젝트 현황 요약 (직접 조회)
   const { data: ownedProjects } = await supabase
     .from('projects')
-    .select('id')
-    .eq('client_id', user!.id);
+    .select('id, status')
+    .eq('client_id', user.id);
 
   const { data: memberProjects } = await supabase
     .from('project_members')
     .select('project_id')
-    .eq('user_id', user!.id);
+    .eq('user_id', user.id);
 
   const ownedIds = ownedProjects?.map(p => p.id) || [];
   const memberIds = memberProjects?.map(m => m.project_id) || [];
   const allProjectIds = [...new Set([...ownedIds, ...memberIds])];
 
-  // 프로젝트 상세 정보 가져오기 (최근 5개)
+  // 멤버 프로젝트의 상태 조회
+  let memberProjectStatuses: { status: string }[] = [];
+  if (memberIds.length > 0) {
+    const { data } = await supabase
+      .from('projects')
+      .select('status')
+      .in('id', memberIds);
+    memberProjectStatuses = data || [];
+  }
+
+  // 모든 프로젝트 상태 합치기
+  const allStatuses = [
+    ...(ownedProjects || []),
+    ...memberProjectStatuses
+  ];
+
+  const summary = {
+    total: allProjectIds.length,
+    planning: allStatuses.filter(p => p.status === 'planning').length,
+    production: allStatuses.filter(p => p.status === 'production').length,
+    review: allStatuses.filter(p => p.status === 'review').length,
+    completed: allStatuses.filter(p => p.status === 'completed').length,
+  };
+
+  // 2. 긴급 항목
+  let urgent = { urgent_feedbacks: [], overdue_projects: [] };
+
+  if (allProjectIds.length > 0) {
+    // 긴급 피드백 (최근 24시간 이내)
+    const oneDayAgo = new Date();
+    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
+    const { data: feedbacks } = await supabase
+      .from('video_feedbacks')
+      .select(`
+        id,
+        content,
+        created_at,
+        project_id,
+        video_id,
+        video_versions!inner(id, version_name, original_filename),
+        projects!inner(id, title)
+      `)
+      .in('project_id', allProjectIds)
+      .eq('status', 'open')
+      .gte('created_at', oneDayAgo.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const urgentFeedbacks = (feedbacks || []).map((fb: any) => ({
+      id: fb.id,
+      content: fb.content,
+      project_title: fb.projects?.title || '알 수 없음',
+      video_title: fb.video_versions?.version_name || fb.video_versions?.original_filename || '알 수 없음',
+      created_at: fb.created_at,
+    }));
+
+    // 기한 초과 프로젝트
+    const today = new Date().toISOString().split('T')[0];
+    const { data: overdueProjects } = await supabase
+      .from('projects')
+      .select('id, title, deadline')
+      .in('id', allProjectIds)
+      .not('status', 'eq', 'completed')
+      .not('deadline', 'is', null)
+      .lt('deadline', today)
+      .order('deadline', { ascending: true })
+      .limit(10);
+
+    const overdueProjectsWithDays = (overdueProjects || []).map((project) => {
+      const deadline = new Date(project.deadline!);
+      const todayDate = new Date();
+      const diffTime = todayDate.getTime() - deadline.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      return {
+        id: project.id,
+        title: project.title,
+        deadline: project.deadline,
+        days_overdue: diffDays,
+      };
+    });
+
+    urgent = {
+      urgent_feedbacks: urgentFeedbacks,
+      overdue_projects: overdueProjectsWithDays,
+    };
+  }
+
+  // 3. 최근 활동
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let activitiesData = { activities: [] as any[] };
+
+  if (allProjectIds.length > 0) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const activities: any[] = [];
+    const limit = 10;
+
+    // 피드백 활동
+    const { data: feedbacks } = await supabase
+      .from('video_feedbacks')
+      .select(`
+        id,
+        content,
+        created_at,
+        project_id,
+        video_id,
+        created_by,
+        projects!inner(id, title),
+        profiles!video_feedbacks_created_by_fkey(id, name, avatar_url)
+      `)
+      .in('project_id', allProjectIds)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (feedbacks) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      feedbacks.forEach((fb: any) => {
+        activities.push({
+          type: 'feedback',
+          action: 'created',
+          title: fb.content.substring(0, 50) + (fb.content.length > 50 ? '...' : ''),
+          project_name: fb.projects?.title || '알 수 없음',
+          actor_name: fb.profiles?.name || '알 수 없음',
+          actor_avatar: fb.profiles?.avatar_url || null,
+          created_at: fb.created_at,
+          link: `/projects/${fb.project_id}/videos/${fb.video_id}`,
+        });
+      });
+    }
+
+    // 영상 버전 활동
+    const { data: versions } = await supabase
+      .from('video_versions')
+      .select(`
+        id,
+        version_name,
+        original_filename,
+        created_at,
+        project_id,
+        uploaded_by,
+        projects!inner(id, title),
+        profiles!video_versions_uploaded_by_fkey(id, name, avatar_url)
+      `)
+      .in('project_id', allProjectIds)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (versions) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      versions.forEach((version: any) => {
+        activities.push({
+          type: 'version',
+          action: 'created',
+          title: version.version_name || version.original_filename || '새 버전',
+          project_name: version.projects?.title || '알 수 없음',
+          actor_name: version.profiles?.name || '알 수 없음',
+          actor_avatar: version.profiles?.avatar_url || null,
+          created_at: version.created_at,
+          link: `/projects/${version.project_id}/videos/${version.id}`,
+        });
+      });
+    }
+
+    // 문서 활동
+    const { data: documents } = await supabase
+      .from('documents')
+      .select(`
+        id,
+        title,
+        created_at,
+        project_id,
+        created_by,
+        projects!inner(id, title),
+        profiles!documents_created_by_fkey(id, name, avatar_url)
+      `)
+      .in('project_id', allProjectIds)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (documents) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      documents.forEach((doc: any) => {
+        activities.push({
+          type: 'document',
+          action: 'created',
+          title: doc.title,
+          project_name: doc.projects?.title || '알 수 없음',
+          actor_name: doc.profiles?.name || '알 수 없음',
+          actor_avatar: doc.profiles?.avatar_url || null,
+          created_at: doc.created_at,
+          link: `/projects/${doc.project_id}/documents/${doc.id}`,
+        });
+      });
+    }
+
+    // 프로젝트 활동
+    const { data: projectActivities } = await supabase
+      .from('projects')
+      .select(`
+        id,
+        title,
+        created_at,
+        client_id,
+        profiles!projects_client_id_fkey(id, name, avatar_url)
+      `)
+      .in('id', allProjectIds)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (projectActivities) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      projectActivities.forEach((proj: any) => {
+        activities.push({
+          type: 'project',
+          action: 'created',
+          title: proj.title,
+          project_name: proj.title,
+          actor_name: proj.profiles?.name || '알 수 없음',
+          actor_avatar: proj.profiles?.avatar_url || null,
+          created_at: proj.created_at,
+          link: `/projects/${proj.id}`,
+        });
+      });
+    }
+
+    // 시간순 정렬
+    activities.sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    activitiesData = { activities: activities.slice(0, limit) };
+  }
+
+  // 4. 최근 프로젝트
   let recentProjects: Array<{
     id: string;
     title: string;
@@ -59,10 +297,9 @@ export default async function DashboardPage() {
       .from('projects')
       .select('id, title, status, created_at, updated_at, description')
       .in('id', allProjectIds)
-      .order('created_at', { ascending: false })
-      .limit(5);
+      .order('updated_at', { ascending: false })
+      .limit(10);
 
-    // 각 프로젝트별 멤버 수와 문서 수 조회
     const projectsWithDetails = await Promise.all(
       (data || []).map(async (project) => {
         const { count: memberCount } = await supabase
@@ -86,7 +323,6 @@ export default async function DashboardPage() {
 
     recentProjects = projectsWithDetails;
 
-    // 전체 프로젝트 상태 통계
     const { data: allData } = await supabase
       .from('projects')
       .select('status')
@@ -95,34 +331,18 @@ export default async function DashboardPage() {
     allProjects = allData || [];
   }
 
-  // 진행 중인 프로젝트 수 (planning, production, review)
-  const activeProjectCount = allProjects.filter(
-    p => ['planning', 'production', 'review'].includes(p.status)
-  ).length;
-
-  // 협업 멤버 수 계산 - distinct user_id, 자기 자신 제외
+  // 협업 멤버 수
   let totalMembers = 0;
   if (allProjectIds.length > 0) {
     const { data: members } = await supabase
       .from('project_members')
       .select('user_id')
       .in('project_id', allProjectIds)
-      .neq('user_id', user!.id);
+      .neq('user_id', user.id);
 
     const uniqueMembers = new Set(members?.map(m => m.user_id) || []);
     totalMembers = uniqueMembers.size;
   }
-
-  // 최근 활동 시간 (년월일시분)
-  const lastActivity = recentProjects.length > 0
-    ? new Date(recentProjects[0].created_at).toLocaleString('ko-KR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : '-';
 
   // 프로젝트 상태 차트 데이터
   const projectStatusData = [
@@ -161,69 +381,36 @@ export default async function DashboardPage() {
 
   const totalDocuments = documentStatusData.reduce((sum, d) => sum + d.count, 0);
 
+  // 현재 시간대 인사말
+  const hour = new Date().getHours();
+  let greeting = '안녕하세요';
+  if (hour >= 5 && hour < 12) greeting = '좋은 아침이에요';
+  else if (hour >= 12 && hour < 18) greeting = '좋은 오후에요';
+  else if (hour >= 18 && hour < 22) greeting = '좋은 저녁이에요';
+  else greeting = '늦은 시간까지 수고하세요';
+
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
-      {/* 인사 헤더 */}
-      <div className="bg-gradient-to-r from-primary-50 via-white to-purple-50 rounded-2xl p-6 border border-primary-100">
-        <h1 className="text-2xl font-bold text-gray-900">
-          안녕하세요, {profile?.name || '사용자'}님
-        </h1>
-        <p className="text-gray-500 mt-1 text-sm">
-          오늘도 좋은 하루 되세요
-        </p>
+    <div className="max-w-7xl mx-auto space-y-4">
+      {/* 인사 헤더 - 간결하게 */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">
+            {greeting}, {profile?.name || '사용자'}님 👋
+          </h1>
+          <p className="text-sm text-gray-500">오늘의 프로젝트 현황을 확인하세요</p>
+        </div>
       </div>
 
-      {/* 통계 카드 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-violet-50 to-white">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center">
-                <FolderOpen className="h-5 w-5 text-primary-600" />
-              </div>
-              <TrendingUp className="h-4 w-4 text-primary-400" />
-            </div>
-            <div className="text-2xl font-bold text-gray-900">{activeProjectCount}</div>
-            <p className="text-xs text-gray-500 mt-1">진행 중인 프로젝트</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-blue-50 to-white">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
-                <Users className="h-5 w-5 text-blue-600" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold text-gray-900">{totalMembers}</div>
-            <p className="text-xs text-gray-500 mt-1">협업 멤버</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-green-50 to-white">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
-                <FileText className="h-5 w-5 text-green-600" />
-              </div>
-            </div>
-            <div className="text-2xl font-bold text-gray-900">{totalDocuments}</div>
-            <p className="text-xs text-gray-500 mt-1">전체 문서</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-0 shadow-sm bg-gradient-to-br from-orange-50 to-white">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 rounded-xl bg-orange-100 flex items-center justify-center">
-                <Clock className="h-5 w-5 text-orange-600" />
-              </div>
-            </div>
-            <div className="text-lg font-semibold text-gray-900 truncate">{lastActivity}</div>
-            <p className="text-xs text-gray-500 mt-1">최근 활동</p>
-          </CardContent>
-        </Card>
-      </div>
+      {/* 통계 카드 (컴팩트) */}
+      <StatCards
+        total={summary.total}
+        planning={summary.planning}
+        production={summary.production}
+        review={summary.review}
+        completed={summary.completed}
+        totalMembers={totalMembers}
+        totalDocuments={totalDocuments}
+      />
 
       {/* 그래프 영역 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -231,73 +418,28 @@ export default async function DashboardPage() {
         <DocumentStatusChart data={documentStatusData} />
       </div>
 
-      {/* 최근 프로젝트 */}
-      <Card className="border-0 shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <div>
-            <CardTitle className="text-base font-semibold">최근 프로젝트</CardTitle>
-            <CardDescription className="text-xs">최근에 작업한 프로젝트 목록</CardDescription>
-          </div>
-          {recentProjects.length > 0 && (
-            <Link href="/projects">
-              <Button variant="ghost" size="sm" className="text-xs">
-                전체 보기
-                <ArrowRight className="ml-1 h-3 w-3" />
-              </Button>
-            </Link>
-          )}
-        </CardHeader>
-        <CardContent>
-          {recentProjects.length === 0 ? (
-            <div className="text-center py-10 text-gray-500">
-              <FolderOpen className="h-10 w-10 mx-auto text-gray-300 mb-3" />
-              <p className="text-sm">아직 프로젝트가 없습니다</p>
-              <p className="text-xs text-gray-400 mt-1">새 프로젝트를 만들어 시작해보세요</p>
-              <Link href="/projects">
-                <Button size="sm" className="mt-4 bg-primary-600 hover:bg-primary-700">
-                  <Plus className="h-4 w-4 mr-1" />
-                  새 프로젝트 만들기
-                </Button>
-              </Link>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {recentProjects.map((project) => (
-                <Link
-                  key={project.id}
-                  href={`/projects/${project.id}`}
-                  className="block p-4 rounded-lg border border-gray-100 hover:border-primary-200 hover:bg-primary-50/30 transition-all"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="font-medium text-sm text-gray-900 truncate">
-                      {project.title}
-                    </p>
-                    <Badge variant={statusLabels[project.status]?.variant || 'default'} className="ml-3 text-xs">
-                      {statusLabels[project.status]?.label || project.status}
-                    </Badge>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <Users className="h-3 w-3" />
-                      멤버 {project.memberCount}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <FileText className="h-3 w-3" />
-                      문서 {project.documentCount}
-                    </span>
-                    <span className="hidden sm:inline-flex items-center gap-1">
-                      생성 {new Date(project.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
-                    </span>
-                    <span className="hidden sm:inline-flex items-center gap-1">
-                      수정 {new Date(project.updated_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* 긴급 피드백 + 최근 활동 (한 줄에 반반, 접힘) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        {/* 긴급 섹션 - 긴급 피드백과 기한 초과를 하나로 */}
+        <UrgentSection
+          urgentFeedbacks={urgent.urgent_feedbacks}
+          overdueProjects={urgent.overdue_projects}
+        />
+
+        {/* 최근 활동 */}
+        <ActivityFeed activities={activitiesData.activities} />
+      </div>
+
+      {/* 최근 프로젝트 (기본 펼침) */}
+      <RecentProjects projects={recentProjects} />
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<DashboardSkeleton />}>
+      <DashboardContent />
+    </Suspense>
   );
 }

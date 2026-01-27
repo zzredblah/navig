@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
-import { Bell, Menu, LogOut, User, Settings } from 'lucide-react';
+import { Menu, LogOut, User, Settings, MessageSquare } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -15,6 +15,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
+import { ChatPanel } from '@/components/chat/ChatPanel';
+import { useChatUnread } from '@/hooks/use-chat-unread';
 
 interface HeaderProps {
   user: {
@@ -44,6 +47,8 @@ export function Header({ user, onMenuClick }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const { unreadCount } = useChatUnread();
   const pageTitle = getPageTitle(pathname);
 
   const handleLogout = async () => {
@@ -97,24 +102,23 @@ export function Header({ user, onMenuClick }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="relative">
-                <Bell className="h-5 w-5" />
-                <span className="sr-only">알림</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-72" align="end" forceMount>
-              <div className="px-3 py-2 border-b border-gray-100">
-                <p className="text-sm font-medium text-gray-900">알림</p>
-              </div>
-              <div className="flex flex-col items-center justify-center py-8 px-4">
-                <Bell className="h-8 w-8 text-gray-300 mb-2" />
-                <p className="text-sm text-gray-500">알림이 없습니다</p>
-                <p className="text-xs text-gray-400 mt-0.5">새로운 알림이 오면 여기에 표시됩니다</p>
-              </div>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* 채팅 버튼 */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative h-9 w-9"
+            onClick={() => setIsChatOpen(true)}
+          >
+            <MessageSquare className="h-5 w-5 text-gray-500" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 h-4 min-w-[16px] px-1 bg-primary-500 text-white text-[10px] font-medium rounded-full flex items-center justify-center">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+            <span className="sr-only">채팅 열기</span>
+          </Button>
+
+          <NotificationBell />
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -160,6 +164,9 @@ export function Header({ user, onMenuClick }: HeaderProps) {
           </DropdownMenu>
         </div>
       </div>
+
+      {/* 채팅 패널 */}
+      <ChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
     </header>
   );
 }

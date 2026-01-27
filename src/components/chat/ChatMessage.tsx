@@ -21,8 +21,16 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { EmojiPicker } from './EmojiPicker';
 import {
   ChatMessageWithDetails,
@@ -37,9 +45,12 @@ interface ChatMessageProps {
   message: ChatMessageWithDetails;
   currentUserId: string;
   showProfile?: boolean; // 프로필 표시 여부 (연속 메시지 그룹화용)
+  isSelectMode?: boolean; // 선택 모드
+  isSelected?: boolean; // 선택 여부
+  onSelect?: (messageId: string) => void; // 선택 토글
   onReply?: (message: ChatMessageWithDetails) => void;
   onEdit?: (messageId: string, content: string) => Promise<void>;
-  onDelete?: (messageId: string) => Promise<void>;
+  onDelete?: (messageId: string, type: 'everyone' | 'me_only') => Promise<void>;
   onReaction?: (messageId: string, emoji: string) => Promise<void>;
   onRemoveReaction?: (messageId: string, emoji: string) => Promise<void>;
 }
@@ -48,6 +59,9 @@ export function ChatMessage({
   message,
   currentUserId,
   showProfile = true,
+  isSelectMode = false,
+  isSelected = false,
+  onSelect,
   onReply,
   onEdit,
   onDelete,
@@ -57,6 +71,7 @@ export function ChatMessage({
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
   const [showActions, setShowActions] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   const isOwn = message.sender_id === currentUserId;
   const isDeleted = message.is_deleted;
@@ -92,16 +107,49 @@ export function ChatMessage({
     }
   };
 
+  const handleDeleteClick = (type: 'everyone' | 'me_only') => {
+    setShowDeleteDialog(false);
+    onDelete?.(message.id, type);
+  };
+
+  // 선택 모드에서 클릭 처리
+  const handleClick = () => {
+    if (isSelectMode && onSelect) {
+      onSelect(message.id);
+    }
+  };
+
   return (
+    <>
     <div
       className={cn(
-        'group flex gap-2 px-4 hover:bg-gray-50/50 transition-colors',
+        'group relative flex gap-2 px-4 hover:bg-gray-50/50 transition-colors',
         isOwn ? 'flex-row-reverse' : 'flex-row',
-        shouldShowProfile ? 'pt-2' : 'pt-0.5'
+        shouldShowProfile ? 'pt-2' : 'pt-0.5',
+        isSelectMode && 'cursor-pointer',
+        isSelected && 'bg-primary-50'
       )}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}
+      onClick={handleClick}
     >
+      {/* 선택 모드 체크박스 */}
+      {isSelectMode && (
+        <div className="flex items-center shrink-0">
+          <div className={cn(
+            'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
+            isSelected
+              ? 'bg-primary-600 border-primary-600'
+              : 'border-gray-300 bg-white'
+          )}>
+            {isSelected && (
+              <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+          </div>
+        </div>
+      )}
       {/* 아바타 - 내 메시지는 표시 안함, 연속 메시지도 공간만 확보 */}
       {!isOwn && (
         <div className="w-8 shrink-0">
@@ -117,7 +165,7 @@ export function ChatMessage({
       )}
 
       {/* 메시지 내용 */}
-      <div className={cn('flex-1 min-w-0 max-w-[75%]', isOwn && 'flex flex-col items-end')}>
+      <div className={cn('max-w-[70%] min-w-0', isOwn && 'flex flex-col items-end')}>
         {/* 헤더 - 상대방 연속 메시지 첫 번째만 표시 */}
         {shouldShowProfile && (
           <div className="flex items-center gap-2 mb-0.5">
@@ -170,10 +218,10 @@ export function ChatMessage({
             </div>
           </div>
         ) : (
-          <div className={cn('flex items-end gap-1', isOwn && 'flex-row-reverse')}>
+          <div className={cn('flex items-end gap-1 max-w-full', isOwn && 'flex-row-reverse')}>
             <div
               className={cn(
-                'inline-block px-3 py-1.5 text-sm',
+                'px-3 py-1.5 text-sm max-w-full',
                 isDeleted
                   ? 'bg-gray-100 text-gray-400 italic rounded-xl'
                   : isOwn
@@ -181,9 +229,12 @@ export function ChatMessage({
                   : 'bg-gray-100 text-gray-900 rounded-2xl rounded-bl-md'
               )}
             >
-              <p className="whitespace-pre-wrap break-words">{message.content}</p>
+              <p className="whitespace-pre-wrap break-words overflow-wrap-anywhere"
+                 style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                {message.content}
+              </p>
             </div>
-            <span className="text-[10px] text-gray-400 shrink-0 pb-0.5">
+            <span className="text-[10px] text-gray-400 shrink-0 pb-0.5 whitespace-nowrap">
               {formatChatTime(message.created_at)}
               {message.is_edited && ' (수정됨)'}
             </span>
@@ -248,12 +299,12 @@ export function ChatMessage({
         )}
       </div>
 
-      {/* 액션 버튼 */}
+      {/* 액션 버튼 - 절대 위치로 레이아웃 영향 방지 */}
       {showActions && !isDeleted && !isEditing && (
         <div
           className={cn(
-            'flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity',
-            isOwn && 'flex-row-reverse'
+            'absolute top-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10',
+            isOwn ? 'left-2' : 'right-2'
           )}
         >
           {/* 빠른 리액션 */}
@@ -262,7 +313,7 @@ export function ChatMessage({
               <button
                 key={emoji}
                 onClick={() => handleReaction(emoji)}
-                className="p-1 hover:bg-gray-100 transition-colors"
+                className="p-1 hover:bg-gray-100 transition-colors text-sm"
               >
                 {emoji}
               </button>
@@ -270,7 +321,7 @@ export function ChatMessage({
             <EmojiPicker
               onSelect={handleReaction}
               trigger={
-                <button className="p-1 hover:bg-gray-100 transition-colors text-gray-400">
+                <button className="p-1 hover:bg-gray-100 transition-colors text-gray-400 text-sm">
                   +
                 </button>
               }
@@ -281,37 +332,75 @@ export function ChatMessage({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0"
+            className="h-7 w-7 p-0 bg-white border border-gray-200 shadow-sm"
             onClick={() => onReply?.(message)}
           >
             <Reply className="h-4 w-4" />
           </Button>
 
           {/* 더보기 메뉴 */}
-          {isOwn && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align={isOwn ? 'start' : 'end'}>
-                <DropdownMenuItem onClick={() => setIsEditing(true)}>
-                  <Pencil className="h-4 w-4 mr-2" />
-                  수정
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => onDelete?.(message.id)}
-                  className="text-red-600"
-                >
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  삭제
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 bg-white border border-gray-200 shadow-sm">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align={isOwn ? 'start' : 'end'}>
+              {isOwn && (
+                <>
+                  <DropdownMenuItem onClick={() => setIsEditing(true)}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    수정
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem
+                onClick={() => setShowDeleteDialog(true)}
+                className="text-red-600"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                삭제
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       )}
     </div>
+
+    {/* 삭제 확인 다이얼로그 */}
+    <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <DialogContent className="sm:max-w-[280px] p-0 gap-0 overflow-hidden rounded-2xl">
+        <DialogHeader className="p-5 pb-4 text-center">
+          <DialogTitle className="text-base font-semibold">메시지 삭제</DialogTitle>
+          <DialogDescription className="text-sm text-gray-500 mt-1">
+            이 메시지를 삭제하시겠습니까?
+          </DialogDescription>
+        </DialogHeader>
+        <div className="border-t border-gray-200">
+          {isOwn && (
+            <button
+              className="w-full px-4 py-3.5 text-sm text-red-500 font-medium hover:bg-gray-50 active:bg-gray-100 transition-colors text-center border-b border-gray-200"
+              onClick={() => handleDeleteClick('everyone')}
+            >
+              모두에게서 삭제
+            </button>
+          )}
+          <button
+            className="w-full px-4 py-3.5 text-sm text-gray-900 hover:bg-gray-50 active:bg-gray-100 transition-colors text-center border-b border-gray-200"
+            onClick={() => handleDeleteClick('me_only')}
+          >
+            나에게서만 삭제
+          </button>
+          <button
+            className="w-full px-4 py-3.5 text-sm text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors text-center"
+            onClick={() => setShowDeleteDialog(false)}
+          >
+            취소
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

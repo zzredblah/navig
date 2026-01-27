@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { z } from 'zod';
+import { NotificationService } from '@/lib/notifications/service';
 
 // 수정 요청 스키마
 const updateFeedbackSchema = z.object({
@@ -231,6 +232,33 @@ export async function PATCH(
         { error: '피드백 수정 중 오류가 발생했습니다' },
         { status: 500 }
       );
+    }
+
+    // 상태 변경 시 피드백 작성자에게 알림 (비동기)
+    if (updateData.status && existingFeedback.created_by !== user.id) {
+      try {
+        const statusLabels: Record<string, string> = {
+          open: '진행 중',
+          resolved: '해결됨',
+          wontfix: '수정하지 않음',
+        };
+
+        await NotificationService.create({
+          userId: existingFeedback.created_by,
+          type: 'feedback_status',
+          title: '피드백 상태가 변경되었습니다',
+          content: `상태: ${statusLabels[updateData.status] || updateData.status}`,
+          link: `/projects/${existingFeedback.project_id}/videos/${existingFeedback.video_id}`,
+          metadata: {
+            feedbackId,
+            status: updateData.status,
+            videoId: existingFeedback.video_id,
+          },
+        });
+      } catch (notifError) {
+        console.error('[Feedback PATCH] 알림 생성 실패:', notifError);
+        // 알림 실패는 메인 로직에 영향 없음
+      }
     }
 
     return NextResponse.json({ feedback });
