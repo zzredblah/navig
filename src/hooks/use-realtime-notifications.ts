@@ -70,12 +70,16 @@ export function useRealtimeNotifications({
           handleNewNotification(notification);
         }
       )
-      .subscribe((status) => {
+      .subscribe((status, err) => {
         if (status === 'SUBSCRIBED') {
           console.log('[Realtime] 알림 채널 구독 시작');
         }
         if (status === 'CHANNEL_ERROR') {
-          console.error('[Realtime] 알림 채널 에러');
+          // notifications 테이블이 없거나 Realtime이 비활성화된 경우 무시
+          // 마이그레이션 적용 후 자동으로 작동함
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[Realtime] 알림 채널 에러 - notifications 테이블 또는 Realtime 설정 확인 필요:', err?.message || '');
+          }
         }
       });
 

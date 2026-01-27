@@ -123,3 +123,7 @@ CREATE TRIGGER trigger_create_notification_settings
   AFTER INSERT ON profiles
   FOR EACH ROW
   EXECUTE FUNCTION create_default_notification_settings();
+
+-- Supabase Realtime 활성화 (실시간 알림 수신용)
+-- 이 테이블에 INSERT/UPDATE/DELETE 이벤트를 실시간으로 구독할 수 있게 함
+ALTER PUBLICATION supabase_realtime ADD TABLE notifications;

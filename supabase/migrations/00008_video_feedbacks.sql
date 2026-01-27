@@ -158,3 +158,6 @@ COMMENT ON COLUMN video_feedbacks.is_urgent IS '긴급 피드백 여부';
 COMMENT ON COLUMN video_feedbacks.status IS '피드백 상태 (open: 열림, resolved: 해결됨, wontfix: 수정 안함)';
 
 COMMENT ON TABLE feedback_replies IS '피드백 답글 테이블';
+
+-- 8. Supabase Realtime 활성화 (실시간 피드백 업데이트용)
+ALTER PUBLICATION supabase_realtime ADD TABLE video_feedbacks;

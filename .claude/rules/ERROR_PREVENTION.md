@@ -56,7 +56,56 @@
 
 ---
 
-## 1. Supabase RLS (Row Level Security) 관련
+## 1. Supabase 마이그레이션 체크리스트 (필수)
+
+### 1.0 문제: 마이그레이션 누락으로 런타임 에러
+
+**원인:**
+- 테이블 생성 후 Realtime, RLS, 트리거 등 관련 설정 누락
+- 코드에서 사용하는 기능이 DB에 설정되지 않음
+
+**마이그레이션 작성 시 체크리스트:**
+
+```sql
+-- 1. 테이블 생성
+CREATE TABLE table_name (...);
+
+-- 2. 인덱스 (쿼리 성능)
+CREATE INDEX idx_table_column ON table_name(column);
+
+-- 3. RLS 활성화
+ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
+
+-- 4. RLS 정책 (SELECT, INSERT, UPDATE, DELETE 각각)
+CREATE POLICY "..." ON table_name FOR SELECT USING (...);
+
+-- 5. 트리거 (updated_at 자동 갱신 등)
+CREATE TRIGGER ... BEFORE UPDATE ON table_name ...;
+
+-- 6. ⚠️ Realtime 필요 시 (실시간 구독 사용하는 테이블)
+ALTER PUBLICATION supabase_realtime ADD TABLE table_name;
+```
+
+**Realtime 필수 대상 테이블:**
+- `notifications` - 실시간 알림
+- `chat_messages` - 실시간 채팅
+- `chat_room_members` - 채팅 읽음 상태
+- `video_feedbacks` - 실시간 피드백
+- 기타 실시간 구독이 필요한 테이블
+
+**Realtime이 필요한 기능 판단 기준:**
+- 사용자 A의 행동이 사용자 B 화면에 **즉시** 반영되어야 하는 경우
+- 채팅, 알림, 협업 편집, 실시간 피드백 등
+
+**규칙:**
+- 코드에서 `supabase.channel().on('postgres_changes', ...)` 사용 시 해당 테이블에 Realtime 활성화 필수
+- 마이그레이션 작성 시 해당 테이블이 실시간 기능에 사용되는지 확인
+- 실시간 기능 구현 시 마이그레이션에 `ALTER PUBLICATION supabase_realtime ADD TABLE` 자동 포함
+- 마이그레이션 PR 전 체크리스트 확인
+
+---
+
+## 2. Supabase RLS (Row Level Security) 관련
 
 ### 1.1 문제: 프로젝트 생성 시 "서버 오류가 발생했습니다"
 
@@ -980,7 +1029,45 @@ export function NotificationBell() {
 
 ---
 
-## 15. 체크리스트
+## 15. 한글 IME (Input Method Editor) 관련
+
+### 15.1 문제: 한글 입력 시 마지막 글자 중복
+
+**원인:**
+- 한글 IME는 글자 조합 중 여러 이벤트 발생 (compositionstart, compositionupdate, compositionend)
+- `onKeyDown`에서 Enter 처리 시 조합 중인 글자가 중복 입력됨
+- 특히 Windows에서 자주 발생
+
+**해결책:**
+```typescript
+// ✅ Good: 조합 상태 추적
+const [isComposing, setIsComposing] = useState(false);
+
+const handleKeyDown = (e: React.KeyboardEvent) => {
+  // 한글 조합 중에는 Enter 처리하지 않음
+  if (isComposing) return;
+
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    handleSend();
+  }
+};
+
+<Textarea
+  onCompositionStart={() => setIsComposing(true)}
+  onCompositionEnd={() => setIsComposing(false)}
+  onKeyDown={handleKeyDown}
+/>
+```
+
+**규칙:**
+- 채팅, 검색, 폼 입력 등 Enter로 제출하는 모든 입력 필드에 적용
+- `onCompositionStart`, `onCompositionEnd` 핸들러 필수
+- `isComposing` 상태 체크 후 키 이벤트 처리
+
+---
+
+## 16. 체크리스트
 
 ### 레이아웃 변경 시 (§0)
 - [ ] 관련 스켈레톤 컴포넌트가 있는지 확인

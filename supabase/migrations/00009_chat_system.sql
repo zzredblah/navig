@@ -243,3 +243,7 @@ COMMENT ON COLUMN chat_messages.mentions IS '멘션된 사용자 UUID 배열';
 COMMENT ON COLUMN chat_messages.attachments IS '첨부 파일 JSON 배열';
 
 COMMENT ON TABLE chat_message_reactions IS '메시지 이모지 리액션 테이블';
+
+-- 11. Supabase Realtime 활성화 (실시간 채팅용)
+ALTER PUBLICATION supabase_realtime ADD TABLE chat_messages;
+ALTER PUBLICATION supabase_realtime ADD TABLE chat_room_members;

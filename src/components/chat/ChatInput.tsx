@@ -42,6 +42,7 @@ export function ChatInput({
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [isComposing, setIsComposing] = useState(false); // 한글 IME 조합 중 여부
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
@@ -89,10 +90,22 @@ export function ChatInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // 한글 IME 조합 중에는 Enter 처리하지 않음 (글자 중복 방지)
+    if (isComposing) return;
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  // 한글 IME 조합 시작/종료 핸들러
+  const handleCompositionStart = () => {
+    setIsComposing(true);
+  };
+
+  const handleCompositionEnd = () => {
+    setIsComposing(false);
   };
 
   const handleEmojiSelect = (emoji: string) => {
@@ -313,10 +326,12 @@ export function ChatInput({
             value={content}
             onChange={(e) => setContent(e.target.value)}
             onKeyDown={handleKeyDown}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
             placeholder="메시지를 입력하세요..."
             rows={1}
             disabled={disabled}
-            className="resize-none pr-10 min-h-[36px] max-h-32"
+            className="resize-none pr-10 min-h-[36px] max-h-32 scrollbar-thin"
           />
           <div className="absolute right-2 bottom-1">
             <EmojiPicker onSelect={handleEmojiSelect} />
