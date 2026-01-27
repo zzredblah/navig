@@ -1,8 +1,58 @@
 # NAVIG 오류 방지 가이드 (Error Prevention Guide)
 
-**버전:** 2.3
+**버전:** 2.4
 **최종 수정:** 2026-01-27
 **목적:** 개발 중 발생한 오류와 해결책을 문서화하여 재발 방지
+
+---
+
+## 0. Skeleton/Loading UI 동기화 (필수)
+
+### 0.1 문제: 레이아웃 변경 후 스켈레톤과 불일치
+
+**원인:**
+- 실제 컴포넌트 레이아웃 변경 후 스켈레톤 컴포넌트 업데이트 누락
+- Suspense fallback으로 구버전 UI가 잠깐 표시됨
+
+**해결책:**
+```tsx
+// 레이아웃 변경 시 반드시 스켈레톤도 함께 변경
+
+// ❌ Bad: 레이아웃만 변경
+// StatCards: 7열 그리드로 변경
+<div className="grid grid-cols-7 ...">
+
+// DashboardSkeleton: 여전히 4열
+<div className="grid grid-cols-4 ...">  // 불일치!
+
+// ✅ Good: 레이아웃과 스켈레톤 동시 변경
+// StatCards: 7열 그리드
+<div className="grid grid-cols-4 sm:grid-cols-7 ...">
+
+// DashboardSkeleton: 동일한 7열
+<div className="grid grid-cols-4 sm:grid-cols-7 ...">
+```
+
+**체크 포인트:**
+1. 그리드 열 수 (grid-cols-*)
+2. 간격 (gap-*, space-y-*)
+3. 카드/섹션 구조 (Card wrapper 유무)
+4. 반응형 브레이크포인트 (sm:, md:, lg:)
+5. 섹션 순서
+
+**관련 파일 매핑:**
+
+| 실제 컴포넌트 | 스켈레톤 파일 |
+|--------------|--------------|
+| `StatCards.tsx` | `DashboardSkeleton.tsx` |
+| `ActivityFeed.tsx` | `DashboardSkeleton.tsx` |
+| `UrgentSection.tsx` | `DashboardSkeleton.tsx` |
+| `RecentProjects.tsx` | `DashboardSkeleton.tsx` |
+
+**규칙:**
+- 레이아웃 변경 시 반드시 관련 스켈레톤 검토
+- Suspense fallback이 있는 페이지는 스켈레톤 구조 확인 필수
+- 스켈레톤이 실제 컴포넌트와 동일한 공간을 차지하도록 유지
 
 ---
 
@@ -931,6 +981,12 @@ export function NotificationBell() {
 ---
 
 ## 15. 체크리스트
+
+### 레이아웃 변경 시 (§0)
+- [ ] 관련 스켈레톤 컴포넌트가 있는지 확인
+- [ ] 스켈레톤의 그리드 열 수, 간격, 구조가 동일한지 확인
+- [ ] Suspense fallback이 새 레이아웃과 일치하는지 확인
+- [ ] 반응형 브레이크포인트가 동일한지 확인
 
 ### API 개발 시
 - [ ] Admin 클라이언트 필요 여부 확인 (RLS 우회 필요?)

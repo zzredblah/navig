@@ -42,37 +42,21 @@ export function UrgentSection({ urgentFeedbacks, overdueProjects }: UrgentSectio
   const totalUrgent = urgentFeedbacks.length + overdueProjects.length;
   const hasUrgentItems = totalUrgent > 0;
 
-  // 긴급 항목이 없을 때도 빈 상태로 표시
-  if (!hasUrgentItems) {
-    return (
-      <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 flex items-center gap-2 border-b border-gray-100">
-          <div className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center">
-            <AlertCircle className="h-3.5 w-3.5 text-gray-400" />
-          </div>
-          <span className="text-sm font-medium text-gray-900">긴급 항목</span>
-        </div>
-        <div className="flex flex-col items-center justify-center py-8">
-          <AlertCircle className="h-8 w-8 text-gray-200 mb-2" />
-          <p className="text-xs text-gray-400">긴급한 항목이 없습니다</p>
-        </div>
-      </div>
-    );
-  }
-
   // SSR에서는 기본 레이아웃만 렌더링 (Radix UI hydration 에러 방지)
   if (!mounted) {
     return (
-      <div className="bg-white rounded-lg border border-red-100 shadow-sm overflow-hidden">
+      <div className={`bg-white rounded-lg border shadow-sm overflow-hidden ${hasUrgentItems ? 'border-red-100' : 'border-gray-100'}`}>
         <div className="w-full px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-red-100 flex items-center justify-center">
-              <AlertCircle className="h-3.5 w-3.5 text-red-600" />
+            <div className={`w-6 h-6 rounded-md flex items-center justify-center ${hasUrgentItems ? 'bg-red-100' : 'bg-gray-100'}`}>
+              <AlertCircle className={`h-3.5 w-3.5 ${hasUrgentItems ? 'text-red-600' : 'text-gray-400'}`} />
             </div>
             <span className="text-sm font-medium text-gray-900">긴급 항목</span>
-            <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-              {totalUrgent}
-            </Badge>
+            {hasUrgentItems && (
+              <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                {totalUrgent}
+              </Badge>
+            )}
           </div>
           <ChevronDown className="h-4 w-4 text-gray-400" />
         </div>
@@ -105,17 +89,19 @@ export function UrgentSection({ urgentFeedbacks, overdueProjects }: UrgentSectio
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <div className="bg-white rounded-lg border border-red-100 shadow-sm overflow-hidden">
+      <div className={`bg-white rounded-lg border shadow-sm overflow-hidden ${hasUrgentItems ? 'border-red-100' : 'border-gray-100'}`}>
         <CollapsibleTrigger asChild>
-          <button className="w-full px-4 py-3 flex items-center justify-between hover:bg-red-50/30 transition-colors">
+          <button className={`w-full px-4 py-3 flex items-center justify-between transition-colors ${hasUrgentItems ? 'hover:bg-red-50/30' : 'hover:bg-gray-50'}`}>
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-md bg-red-100 flex items-center justify-center">
-                <AlertCircle className="h-3.5 w-3.5 text-red-600" />
+              <div className={`w-6 h-6 rounded-md flex items-center justify-center ${hasUrgentItems ? 'bg-red-100' : 'bg-gray-100'}`}>
+                <AlertCircle className={`h-3.5 w-3.5 ${hasUrgentItems ? 'text-red-600' : 'text-gray-400'}`} />
               </div>
               <span className="text-sm font-medium text-gray-900">긴급 항목</span>
-              <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                {totalUrgent}
-              </Badge>
+              {hasUrgentItems && (
+                <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                  {totalUrgent}
+                </Badge>
+              )}
             </div>
             {isOpen ? (
               <ChevronUp className="h-4 w-4 text-gray-400" />
@@ -125,6 +111,12 @@ export function UrgentSection({ urgentFeedbacks, overdueProjects }: UrgentSectio
           </button>
         </CollapsibleTrigger>
         <CollapsibleContent>
+          {!hasUrgentItems ? (
+            <div className="flex flex-col items-center justify-center py-8">
+              <AlertCircle className="h-8 w-8 text-gray-200 mb-2" />
+              <p className="text-xs text-gray-400">긴급한 항목이 없습니다</p>
+            </div>
+          ) : (
           <div className="px-3 pb-3 space-y-3">
             {/* 긴급 피드백 */}
             {urgentFeedbacks.length > 0 && (
@@ -238,6 +230,7 @@ export function UrgentSection({ urgentFeedbacks, overdueProjects }: UrgentSectio
               </div>
             )}
           </div>
+          )}
         </CollapsibleContent>
       </div>
     </Collapsible>
