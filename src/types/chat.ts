@@ -103,6 +103,8 @@ export interface ChatMessageWithDetails extends ChatMessage {
   } | null;
   // 리액션 목록
   reactions?: ChatReactionGroup[];
+  // 읽지 않은 사람 수 (KakaoTalk 스타일)
+  unread_count?: number;
 }
 
 // 메시지 리액션

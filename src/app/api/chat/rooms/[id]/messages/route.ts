@@ -201,8 +201,49 @@ export async function GET(
     // 메시지 순서 뒤집기 (오래된 것부터)
     const sortedMessages = messagesWithDetails.reverse();
 
+    // 채팅방 멤버 수 조회 (읽지 않은 수 계산용)
+    const { data: members } = await adminClient
+      .from('chat_room_members')
+      .select('user_id')
+      .eq('room_id', roomId);
+
+    const totalMembers = members?.length || 0;
+    const messageIds = sortedMessages.map((m: { id: string }) => m.id);
+
+    // 각 메시지의 읽음 수 조회
+    let readCounts: { message_id: string; count: number }[] = [];
+    if (messageIds.length > 0) {
+      const { data: reads } = await adminClient
+        .from('chat_message_reads')
+        .select('message_id')
+        .in('message_id', messageIds);
+
+      // 메시지별 읽은 수 계산
+      const countMap = new Map<string, number>();
+      (reads || []).forEach((r: { message_id: string }) => {
+        countMap.set(r.message_id, (countMap.get(r.message_id) || 0) + 1);
+      });
+
+      readCounts = Array.from(countMap.entries()).map(([message_id, count]) => ({
+        message_id,
+        count,
+      }));
+    }
+
+    // unread_count 계산: 전체 멤버 수 - 읽은 수 - 1 (보낸 사람은 자동으로 읽은 것으로 간주)
+    const messagesWithUnreadCount = sortedMessages.map((message: { id: string; sender_id: string }) => {
+      const readCount = readCounts.find((r) => r.message_id === message.id)?.count || 0;
+      // 보낸 사람 제외한 멤버 중 아직 읽지 않은 수
+      const unreadCount = Math.max(0, totalMembers - readCount - 1);
+
+      return {
+        ...message,
+        unread_count: unreadCount,
+      };
+    });
+
     return NextResponse.json({
-      messages: sortedMessages,
+      messages: messagesWithUnreadCount,
       pagination: {
         has_more: hasMore,
         cursor: hasMore ? (resultMessages?.[resultMessages.length - 1] as { created_at: string } | undefined)?.created_at : undefined,
@@ -342,11 +383,29 @@ export async function POST(
       .eq('room_id', roomId)
       .eq('user_id', user.id);
 
+    // 보낸 사람은 자동으로 해당 메시지를 읽음 처리
+    await adminClient
+      .from('chat_message_reads')
+      .upsert(
+        { message_id: message.id, user_id: user.id },
+        { onConflict: 'message_id,user_id' }
+      );
+
+    // 채팅방 멤버 수 조회 (unread_count 계산용)
+    const { data: members } = await adminClient
+      .from('chat_room_members')
+      .select('user_id')
+      .eq('room_id', roomId);
+
+    // 보낸 사람 제외한 멤버 수 = 읽지 않은 수
+    const unreadCount = Math.max(0, (members?.length || 0) - 1);
+
     return NextResponse.json({
       message: {
         ...message,
         reply_to: replyTo,
         reactions: [],
+        unread_count: unreadCount,
       },
     }, { status: 201 });
   } catch (error) {

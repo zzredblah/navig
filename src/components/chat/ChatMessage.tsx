@@ -234,10 +234,18 @@ export function ChatMessage({
                 {message.content}
               </p>
             </div>
-            <span className="text-[10px] text-gray-400 shrink-0 pb-0.5 whitespace-nowrap">
-              {formatChatTime(message.created_at)}
-              {message.is_edited && ' (수정됨)'}
-            </span>
+            <div className={cn('flex items-end gap-1 shrink-0 pb-0.5', isOwn && 'flex-row-reverse')}>
+              {/* 읽지 않은 수 (0보다 클 때만 표시) */}
+              {typeof message.unread_count === 'number' && message.unread_count > 0 && (
+                <span className="text-[10px] text-rose-400 font-bold">
+                  {message.unread_count}
+                </span>
+              )}
+              <span className="text-[10px] text-gray-400 whitespace-nowrap">
+                {formatChatTime(message.created_at)}
+                {message.is_edited && ' (수정됨)'}
+              </span>
+            </div>
           </div>
         )}
 

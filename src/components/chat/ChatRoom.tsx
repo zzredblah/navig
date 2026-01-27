@@ -136,6 +136,21 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
     }
   }, []);
 
+  // 메시지 읽음 처리 (KakaoTalk 스타일)
+  const markMessagesAsRead = useCallback(async (messageIds: string[]) => {
+    if (messageIds.length === 0) return;
+
+    try {
+      await fetch(`/api/chat/rooms/${roomId}/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message_ids: messageIds }),
+      });
+    } catch (error) {
+      console.error('메시지 읽음 처리 실패:', error);
+    }
+  }, [roomId]);
+
   // 메시지 조회
   const fetchMessages = useCallback(async (isLoadMore = false) => {
     if (isLoadMore) {
@@ -168,9 +183,25 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
               container.scrollTop = newScrollHeight - prevScrollHeight;
             }
           });
+
+          // 로드한 메시지 읽음 처리
+          const newMessageIds = data.messages
+            .filter((m: { sender_id: string }) => m.sender_id !== currentUserId)
+            .map((m: { id: string }) => m.id);
+          if (newMessageIds.length > 0) {
+            markMessagesAsRead(newMessageIds);
+          }
         } else {
           setMessages(data.messages);
           shouldScrollToBottomRef.current = true;
+
+          // 초기 로드 시 다른 사람 메시지 읽음 처리
+          const otherMessageIds = data.messages
+            .filter((m: { sender_id: string }) => m.sender_id !== currentUserId)
+            .map((m: { id: string }) => m.id);
+          if (otherMessageIds.length > 0) {
+            markMessagesAsRead(otherMessageIds);
+          }
         }
 
         setHasMore(data.pagination.has_more);
@@ -185,7 +216,7 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
         setIsLoading(false);
       }
     }
-  }, [roomId, cursor]);
+  }, [roomId, cursor, currentUserId, markMessagesAsRead]);
 
   // 읽음 상태 업데이트
   const updateReadStatus = useCallback(async () => {
@@ -348,11 +379,12 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
                   const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
 
                   if (isNearBottom) {
-                    // 하단 근처면 자동 스크롤
+                    // 하단 근처면 자동 스크롤 + 메시지 읽음 처리
                     requestAnimationFrame(() => {
                       scrollToBottomSmooth();
                     });
                     updateReadStatus();
+                    markMessagesAsRead([newMessage.id]);
                   } else {
                     // 위에 있으면 새 메시지 카운트 증가
                     setNewMessageCount((prev) => prev + 1);
@@ -390,7 +422,43 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [roomId, currentUserId, updateReadStatus, scrollToBottomSmooth]);
+  }, [roomId, currentUserId, updateReadStatus, scrollToBottomSmooth, markMessagesAsRead]);
+
+  // 읽음 상태 실시간 구독 (unread_count 업데이트)
+  useEffect(() => {
+    const supabase = createClient();
+
+    const readChannel = supabase
+      .channel(`chat_reads:${roomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'chat_message_reads',
+        },
+        (payload) => {
+          const { message_id, user_id } = payload.new as { message_id: string; user_id: string };
+
+          // 내가 읽은 건 무시 (이미 처리됨)
+          if (user_id === currentUserId) return;
+
+          // 해당 메시지의 unread_count 감소
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg.id !== message_id) return msg;
+              const newUnreadCount = Math.max(0, (msg.unread_count || 0) - 1);
+              return { ...msg, unread_count: newUnreadCount };
+            })
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(readChannel);
+    };
+  }, [roomId, currentUserId]);
 
   const handleScroll = () => {
     if (!messagesContainerRef.current) return;
@@ -400,10 +468,18 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
     const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
     setShowScrollButton(!isNearBottom);
 
-    // 하단 근처에 도달하면 새 메시지 카운트 리셋
+    // 하단 근처에 도달하면 새 메시지 카운트 리셋 및 읽음 처리
     if (isNearBottom && newMessageCount > 0) {
       setNewMessageCount(0);
       updateReadStatus();
+
+      // 아직 읽지 않은 다른 사람 메시지 읽음 처리
+      const unreadMessageIds = messages
+        .filter((m) => m.sender_id !== currentUserId && (m.unread_count || 0) > 0)
+        .map((m) => m.id);
+      if (unreadMessageIds.length > 0) {
+        markMessagesAsRead(unreadMessageIds);
+      }
     }
 
     // 맨 위에 도달하면 이전 메시지 로드
@@ -421,6 +497,9 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
     const tempId = `temp-${Date.now()}`;
 
     // 낙관적 업데이트: 즉시 UI에 표시
+    // unread_count = 채팅방 멤버 수 (나 제외, 본인 포함해서 members + 1이므로 members.length가 나 제외한 수)
+    const estimatedUnreadCount = room?.members?.length || 0;
+
     const optimisticMessage: ChatMessageWithDetails = {
       id: tempId,
       room_id: roomId,
@@ -436,6 +515,7 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
       updated_at: new Date().toISOString(),
       sender: currentUserProfile || { id: currentUserId, name: '나', avatar_url: null },
       reactions: [],
+      unread_count: estimatedUnreadCount,
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
@@ -993,6 +1073,14 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
               scrollToBottomSmooth();
               setNewMessageCount(0);
               updateReadStatus();
+
+              // 읽지 않은 메시지 읽음 처리
+              const unreadMessageIds = messages
+                .filter((m) => m.sender_id !== currentUserId && (m.unread_count || 0) > 0)
+                .map((m) => m.id);
+              if (unreadMessageIds.length > 0) {
+                markMessagesAsRead(unreadMessageIds);
+              }
             }}
           >
             <ArrowDown className="h-4 w-4" />
