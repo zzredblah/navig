@@ -11,6 +11,11 @@ interface SliderCompareProps {
   onTimeUpdate: (time: number) => void;
   onDurationChange: (duration: number) => void;
   syncEnabled: boolean;
+  // 오디오 설정
+  leftMuted?: boolean;
+  rightMuted?: boolean;
+  leftVolume?: number;
+  rightVolume?: number;
 }
 
 export function SliderCompare({
@@ -21,6 +26,10 @@ export function SliderCompare({
   onTimeUpdate,
   onDurationChange,
   syncEnabled,
+  leftMuted = false,
+  rightMuted = true,
+  leftVolume = 1,
+  rightVolume = 1,
 }: SliderCompareProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const leftVideoRef = useRef<HTMLVideoElement>(null);
@@ -258,6 +267,16 @@ export function SliderCompare({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
+  // 볼륨 업데이트
+  useEffect(() => {
+    if (leftVideoRef.current) {
+      leftVideoRef.current.volume = leftVolume;
+    }
+    if (rightVideoRef.current) {
+      rightVideoRef.current.volume = rightVolume;
+    }
+  }, [leftVolume, rightVolume]);
+
   return (
     <div
       ref={containerRef}
@@ -268,7 +287,7 @@ export function SliderCompare({
         ref={rightVideoRef}
         src={rightVideo.url}
         className="absolute inset-0 w-full h-full object-contain"
-        muted
+        muted={rightMuted}
         playsInline
       />
 
@@ -278,7 +297,7 @@ export function SliderCompare({
         src={leftVideo.url}
         className="absolute inset-0 w-full h-full object-contain"
         style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
-        muted
+        muted={leftMuted}
         playsInline
       />
 

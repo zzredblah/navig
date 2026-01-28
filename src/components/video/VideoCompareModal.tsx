@@ -27,6 +27,10 @@ import {
   SkipForward,
   Link2,
   Link2Off,
+  Volume2,
+  VolumeX,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -99,6 +103,16 @@ export function VideoCompareModal({
   const [syncEnabled, setSyncEnabled] = useState(true);
   const [showControls, setShowControls] = useState(true);
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 오디오 상태
+  const [leftMuted, setLeftMuted] = useState(false);
+  const [rightMuted, setRightMuted] = useState(true); // 기본적으로 오른쪽은 음소거
+  const [leftVolume, setLeftVolume] = useState(1);
+  const [rightVolume, setRightVolume] = useState(1);
+
+  // 전체화면 상태
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // 직접 전달된 영상 또는 선택된 영상
   const leftVideo = mode === 'direct' ? directVideo1 : versions.find((v) => v.id === leftVersionId);
@@ -206,6 +220,43 @@ export function VideoCompareModal({
     setSyncEnabled((prev) => !prev);
   }, []);
 
+  // 전체화면 토글
+  const toggleFullscreen = useCallback(async () => {
+    if (!containerRef.current) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        await containerRef.current.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (error) {
+      console.error('전체화면 전환 실패:', error);
+    }
+  }, []);
+
+  // 전체화면 상태 변경 감지
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // 왼쪽 영상 음소거 토글
+  const toggleLeftMute = useCallback(() => {
+    setLeftMuted((prev) => !prev);
+  }, []);
+
+  // 오른쪽 영상 음소거 토글
+  const toggleRightMute = useCallback(() => {
+    setRightMuted((prev) => !prev);
+  }, []);
+
   // 컨트롤 표시/숨김 타이머 리셋
   const resetControlsTimeout = useCallback(() => {
     setShowControls(true);
@@ -310,6 +361,11 @@ export function VideoCompareModal({
     onTimeUpdate: setCurrentTime,
     onDurationChange: setDuration,
     syncEnabled,
+    // 오디오 설정
+    leftMuted,
+    rightMuted,
+    leftVolume,
+    rightVolume,
   };
 
   return (
@@ -416,7 +472,7 @@ export function VideoCompareModal({
         </div>
 
         {/* 메인 콘텐츠 */}
-        <div className="flex-1 min-h-0 overflow-hidden bg-gray-950 flex flex-col">
+        <div ref={containerRef} className="flex-1 min-h-0 overflow-hidden bg-gray-950 flex flex-col">
           {isLoading ? (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
@@ -542,6 +598,84 @@ export function VideoCompareModal({
                         />
                       </div>
 
+                      {/* 왼쪽 영상 볼륨 */}
+                      <div className="flex items-center gap-1 group/vol-left">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={toggleLeftMute}
+                                className={cn(
+                                  "h-8 w-8 hover:bg-white/20",
+                                  !leftMuted ? "text-blue-400" : "text-gray-400"
+                                )}
+                              >
+                                {leftMuted ? (
+                                  <VolumeX className="h-4 w-4" />
+                                ) : (
+                                  <Volume2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {leftVideo ? `v${leftVideo.version_number}` : '이전'} {leftMuted ? '음소거 해제' : '음소거'}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <div className="w-0 overflow-hidden group-hover/vol-left:w-16 transition-all duration-200">
+                          <Slider
+                            value={[leftVolume]}
+                            onValueChange={([v]) => setLeftVolume(v)}
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            className="w-14"
+                            disabled={leftMuted}
+                          />
+                        </div>
+                      </div>
+
+                      {/* 오른쪽 영상 볼륨 */}
+                      <div className="flex items-center gap-1 group/vol-right">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={toggleRightMute}
+                                className={cn(
+                                  "h-8 w-8 hover:bg-white/20",
+                                  !rightMuted ? "text-purple-400" : "text-gray-400"
+                                )}
+                              >
+                                {rightMuted ? (
+                                  <VolumeX className="h-4 w-4" />
+                                ) : (
+                                  <Volume2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {rightVideo ? `v${rightVideo.version_number}` : '현재'} {rightMuted ? '음소거 해제' : '음소거'}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <div className="w-0 overflow-hidden group-hover/vol-right:w-16 transition-all duration-200">
+                          <Slider
+                            value={[rightVolume]}
+                            onValueChange={([v]) => setRightVolume(v)}
+                            min={0}
+                            max={1}
+                            step={0.05}
+                            className="w-14"
+                            disabled={rightMuted}
+                          />
+                        </div>
+                      </div>
+
                       {/* 동기화 토글 */}
                       <TooltipProvider>
                         <Tooltip>
@@ -564,6 +698,29 @@ export function VideoCompareModal({
                           </TooltipTrigger>
                           <TooltipContent>
                             {syncEnabled ? '영상 동기화 켜짐' : '영상 동기화 꺼짐'}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+
+                      {/* 전체화면 토글 */}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={toggleFullscreen}
+                              className="h-8 w-8 text-white hover:bg-white/20"
+                            >
+                              {isFullscreen ? (
+                                <Minimize className="h-4 w-4" />
+                              ) : (
+                                <Maximize className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {isFullscreen ? '전체화면 종료' : '전체화면'}
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>

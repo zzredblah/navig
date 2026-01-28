@@ -32,6 +32,7 @@ export function NotificationBell() {
     markAsRead,
     markAllAsRead,
     isMarkingAllAsRead,
+    refetch,
   } = useNotifications({
     page: 1,
     limit: 5,
@@ -117,6 +118,7 @@ export function NotificationBell() {
                   key={notification.id}
                   notification={notification}
                   onRead={markAsRead}
+                  onInvitationHandled={refetch}
                   compact
                 />
               ))}

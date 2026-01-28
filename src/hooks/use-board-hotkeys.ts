@@ -3,9 +3,10 @@ import { useBoardStore } from '@/stores/board-store';
 
 interface UseBoardHotkeysOptions {
   enabled?: boolean;
+  onSave?: () => void;
 }
 
-export function useBoardHotkeys({ enabled = true }: UseBoardHotkeysOptions = {}) {
+export function useBoardHotkeys({ enabled = true, onSave }: UseBoardHotkeysOptions = {}) {
   const {
     selectedIds,
     currentTool,
@@ -40,6 +41,10 @@ export function useBoardHotkeys({ enabled = true }: UseBoardHotkeysOptions = {})
       // Cmd/Ctrl + 단축키
       if (isMod) {
         switch (e.key.toLowerCase()) {
+          case 's':
+            e.preventDefault();
+            onSave?.();
+            break;
           case 'a':
             e.preventDefault();
             selectAll();
@@ -134,6 +139,7 @@ export function useBoardHotkeys({ enabled = true }: UseBoardHotkeysOptions = {})
       canUndo,
       canRedo,
       setTool,
+      onSave,
     ]
   );
 

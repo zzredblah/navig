@@ -25,12 +25,13 @@ export async function GET(
     // Admin 클라이언트 사용 (RLS 우회)
     const adminClient = createAdminClient();
 
-    // 프로젝트 멤버인지 확인 (멤버 또는 클라이언트)
+    // 프로젝트 멤버인지 확인 (초대 수락한 멤버만)
     const { data: member } = await adminClient
       .from('project_members')
-      .select('role')
+      .select('role, joined_at')
       .eq('project_id', id)
       .eq('user_id', user.id)
+      .not('joined_at', 'is', null) // 초대 수락한 멤버만
       .single();
 
     // 멤버가 아니면 프로젝트 소유자인지 확인
@@ -61,6 +62,7 @@ export async function GET(
           user_id,
           role,
           invited_at,
+          joined_at,
           profiles(id, name, email, avatar_url)
         )
       `)
@@ -105,12 +107,13 @@ export async function PATCH(
 
     const adminClient = createAdminClient();
 
-    // 프로젝트 수정 권한 확인 (owner 또는 editor만)
+    // 프로젝트 수정 권한 확인 (초대 수락한 owner 또는 editor만)
     const { data: member } = await adminClient
       .from('project_members')
       .select('role')
       .eq('project_id', id)
       .eq('user_id', user.id)
+      .not('joined_at', 'is', null) // 초대 수락한 멤버만
       .single();
 
     if (!member || (member.role !== 'owner' && member.role !== 'editor')) {
@@ -175,12 +178,13 @@ export async function DELETE(
 
     const adminClient = createAdminClient();
 
-    // 프로젝트 삭제 권한 확인 (owner만)
+    // 프로젝트 삭제 권한 확인 (초대 수락한 owner만)
     const { data: member } = await adminClient
       .from('project_members')
       .select('role')
       .eq('project_id', id)
       .eq('user_id', user.id)
+      .not('joined_at', 'is', null) // 초대 수락한 멤버만
       .single();
 
     if (!member || member.role !== 'owner') {

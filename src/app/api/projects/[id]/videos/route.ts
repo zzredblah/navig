@@ -63,12 +63,13 @@ export async function GET(
 
     const adminClient = createAdminClient();
 
-    // 프로젝트 멤버 확인
+    // 프로젝트 멤버 확인 (초대 수락한 멤버만)
     const { data: member } = await adminClient
       .from('project_members')
       .select('id')
       .eq('project_id', projectId)
       .eq('user_id', user.id)
+      .not('joined_at', 'is', null) // 초대 수락한 멤버만
       .single();
 
     const { data: project } = await adminClient
@@ -171,12 +172,13 @@ export async function POST(
 
     const adminClient = createAdminClient();
 
-    // 프로젝트 멤버 확인
+    // 프로젝트 멤버 확인 (초대 수락한 멤버만)
     const { data: member } = await adminClient
       .from('project_members')
       .select('id')
       .eq('project_id', projectId)
       .eq('user_id', user.id)
+      .not('joined_at', 'is', null) // 초대 수락한 멤버만
       .single();
 
     const { data: project } = await adminClient

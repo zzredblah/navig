@@ -37,12 +37,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: '프로젝트를 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    // 프로젝트 멤버 확인
+    // 프로젝트 멤버 확인 (초대 수락한 멤버만)
     const { data: membership } = await adminClient
       .from('project_members')
       .select('id')
       .eq('project_id', projectId)
       .eq('user_id', user.id)
+      .not('joined_at', 'is', null) // 초대 수락한 멤버만
       .limit(1);
 
     const isMember = (membership && membership.length > 0) || project.client_id === user.id;

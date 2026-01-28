@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, use } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Plus, LayoutGrid, Loader2, MoreHorizontal, Trash2, Image, Video, Type, StickyNote, Shapes } from 'lucide-react';
+import { LayoutGrid, Loader2, MoreHorizontal, Trash2, Image, Video, Type, StickyNote, Shapes, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -13,20 +13,46 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import type { BoardWithCreator } from '@/types/board';
+import { Badge } from '@/components/ui/badge';
 
-export default function BoardsListPage({ params }: { params: Promise<{ id: string }> }) {
-  const resolvedParams = use(params);
+interface BoardWithProject {
+  id: string;
+  title: string;
+  description: string | null;
+  background_color: string | null;
+  thumbnail_url: string | null;
+  created_at: string;
+  updated_at: string;
+  creator: {
+    id: string;
+    name: string | null;
+    avatar_url: string | null;
+  } | null;
+  project: {
+    id: string;
+    title: string;
+  } | null;
+  elementStats?: {
+    total: number;
+    images: number;
+    videos: number;
+    texts: number;
+    stickies: number;
+    shapes: number;
+  };
+  previewImageUrl?: string | null;
+}
+
+export default function AllBoardsPage() {
   const router = useRouter();
-  const [boards, setBoards] = useState<BoardWithCreator[]>([]);
+  const [boards, setBoards] = useState<BoardWithProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isCreating, setIsCreating] = useState(false);
 
   // 보드 목록 조회
   useEffect(() => {
     async function fetchBoards() {
       try {
-        const response = await fetch(`/api/projects/${resolvedParams.id}/boards`);
+        const response = await fetch('/api/boards?limit=50');
         if (response.ok) {
           const data = await response.json();
           setBoards(data.data || []);
@@ -39,28 +65,7 @@ export default function BoardsListPage({ params }: { params: Promise<{ id: strin
     }
 
     fetchBoards();
-  }, [resolvedParams.id]);
-
-  // 새 보드 생성
-  const handleCreateBoard = async () => {
-    setIsCreating(true);
-    try {
-      const response = await fetch(`/api/projects/${resolvedParams.id}/boards`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: '새 보드' }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        router.push(`/projects/${resolvedParams.id}/boards/${data.board.id}`);
-      }
-    } catch (error) {
-      console.error('보드 생성 실패:', error);
-    } finally {
-      setIsCreating(false);
-    }
-  };
+  }, []);
 
   // 보드 삭제
   const handleDeleteBoard = async (boardId: string, e: React.MouseEvent) => {
@@ -94,26 +99,10 @@ export default function BoardsListPage({ params }: { params: Promise<{ id: strin
     <div className="max-w-6xl mx-auto">
       {/* 헤더 */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-        <div className="flex items-center gap-3">
-          <Link href={`/projects/${resolvedParams.id}`}>
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">레퍼런스 보드</h1>
-            <p className="text-sm text-gray-500">프로젝트 레퍼런스와 아이디어를 정리하세요</p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">레퍼런스 보드</h1>
+          <p className="text-sm text-gray-500">모든 프로젝트의 레퍼런스 보드를 확인하세요</p>
         </div>
-
-        <Button onClick={handleCreateBoard} disabled={isCreating}>
-          {isCreating ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Plus className="h-4 w-4 mr-2" />
-          )}
-          새 보드
-        </Button>
       </div>
 
       {/* 보드 목록 */}
@@ -123,11 +112,11 @@ export default function BoardsListPage({ params }: { params: Promise<{ id: strin
             <LayoutGrid className="h-12 w-12 text-gray-300 mb-4" />
             <p className="text-gray-500 mb-2">아직 보드가 없습니다</p>
             <p className="text-sm text-gray-400 mb-4">
-              새 보드를 만들어 레퍼런스를 정리하세요
+              프로젝트에서 새 보드를 만들어 레퍼런스를 정리하세요
             </p>
-            <Button onClick={handleCreateBoard} disabled={isCreating}>
-              <Plus className="h-4 w-4 mr-2" />
-              첫 보드 만들기
+            <Button onClick={() => router.push('/projects')}>
+              <FolderOpen className="h-4 w-4 mr-2" />
+              프로젝트 보기
             </Button>
           </CardContent>
         </Card>
@@ -136,7 +125,7 @@ export default function BoardsListPage({ params }: { params: Promise<{ id: strin
           {boards.map((board) => (
             <Link
               key={board.id}
-              href={`/projects/${resolvedParams.id}/boards/${board.id}`}
+              href={`/projects/${board.project?.id}/boards/${board.id}`}
             >
               <Card className="group cursor-pointer hover:shadow-md transition-shadow">
                 {/* 썸네일/미리보기 */}
@@ -207,6 +196,16 @@ export default function BoardsListPage({ params }: { params: Promise<{ id: strin
                     <div className="w-full h-full flex flex-col items-center justify-center">
                       <LayoutGrid className="h-10 w-10 text-gray-300 mb-2" />
                       <p className="text-xs text-gray-400">빈 보드</p>
+                    </div>
+                  )}
+
+                  {/* 프로젝트 뱃지 */}
+                  {board.project && (
+                    <div className="absolute top-2 left-2">
+                      <Badge variant="secondary" className="bg-white/90 text-gray-700 text-xs">
+                        <FolderOpen className="h-3 w-3 mr-1" />
+                        {board.project.title}
+                      </Badge>
                     </div>
                   )}
                 </div>

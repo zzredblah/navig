@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Share2, Settings, MoreHorizontal, Grid3X3, Loader2, Download, Image, FileJson } from 'lucide-react';
+import { ArrowLeft, Share2, Settings, MoreHorizontal, Grid3X3, Loader2, Image, FileJson, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -21,6 +21,8 @@ interface BoardHeaderProps {
   onUpdateBoard: (updates: Partial<Board>) => Promise<void>;
   onShare: () => void;
   onDelete: () => void;
+  onSave?: () => void;
+  hasUnsavedChanges?: boolean;
   onExportPNG?: () => void;
   onExportJSON?: () => void;
 }
@@ -31,6 +33,8 @@ export function BoardHeader({
   onUpdateBoard,
   onShare,
   onDelete,
+  onSave,
+  hasUnsavedChanges,
   onExportPNG,
   onExportJSON,
 }: BoardHeaderProps) {
@@ -94,6 +98,23 @@ export function BoardHeader({
 
       {/* 우측: 액션 버튼 */}
       <div className="flex items-center gap-2">
+        {onSave && (
+          <Button
+            variant={hasUnsavedChanges ? 'default' : 'outline'}
+            size="sm"
+            onClick={onSave}
+            disabled={isSaving || !hasUnsavedChanges}
+            className={hasUnsavedChanges ? 'bg-primary-600 hover:bg-primary-700' : ''}
+          >
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
+            {isSaving ? '저장 중...' : hasUnsavedChanges ? '저장' : '저장됨'}
+          </Button>
+        )}
+
         <Button
           variant="ghost"
           size="icon"

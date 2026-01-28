@@ -21,6 +21,7 @@ export default function NotificationsPage() {
     markAsRead,
     markAllAsRead,
     isMarkingAllAsRead,
+    refetch,
   } = useNotifications({
     page,
     limit,
@@ -118,6 +119,7 @@ export default function NotificationsPage() {
                     key={notification.id}
                     notification={notification}
                     onRead={markAsRead}
+                    onInvitationHandled={refetch}
                   />
                 ))}
               </div>

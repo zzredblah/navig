@@ -33,20 +33,26 @@ export const TextElement = memo(function TextElement({
   }, [element.id, onSelect]);
 
   const handleDblClick = useCallback(() => {
-    setIsEditing(true);
     const stage = groupRef.current?.getStage();
-    if (!stage) return;
+    const group = groupRef.current;
+    if (!stage || !group) return;
+
+    setIsEditing(true);
 
     const stageContainer = stage.container();
-    const textNode = textRef.current;
-    if (!textNode) return;
-
-    const textPosition = textNode.getAbsolutePosition();
     const stageBox = stageContainer.getBoundingClientRect();
+
+    // 그룹의 절대 위치 계산
+    const groupPosition = group.getAbsolutePosition();
+    const scale = stage.scaleX();
 
     // 기존 textarea 제거
     if (textareaRef.current) {
-      document.body.removeChild(textareaRef.current);
+      try {
+        document.body.removeChild(textareaRef.current);
+      } catch {
+        // 이미 제거됨
+      }
     }
 
     const textarea = document.createElement('textarea');
@@ -54,14 +60,13 @@ export const TextElement = memo(function TextElement({
     document.body.appendChild(textarea);
 
     const areaPosition = {
-      x: stageBox.left + textPosition.x,
-      y: stageBox.top + textPosition.y,
+      x: stageBox.left + groupPosition.x,
+      y: stageBox.top + groupPosition.y,
     };
 
-    const scale = stage.scaleX();
     textarea.value = element.content.text || '';
     textarea.style.cssText = `
-      position: absolute;
+      position: fixed;
       top: ${areaPosition.y}px;
       left: ${areaPosition.x}px;
       width: ${element.width * scale}px;
@@ -70,7 +75,7 @@ export const TextElement = memo(function TextElement({
       font-weight: ${element.style.font_weight || 'normal'};
       text-align: ${element.style.text_align || 'left'};
       color: ${element.style.text_color || '#000000'};
-      padding: 4px;
+      padding: ${8 * scale}px;
       margin: 0;
       border: 2px solid #3b82f6;
       border-radius: 4px;
@@ -78,8 +83,9 @@ export const TextElement = memo(function TextElement({
       resize: none;
       background: white;
       overflow: hidden;
-      z-index: 1000;
+      z-index: 9999;
       line-height: 1.4;
+      box-sizing: border-box;
     `;
 
     textarea.focus();
@@ -91,7 +97,7 @@ export const TextElement = memo(function TextElement({
         saveHistory();
         try {
           document.body.removeChild(textareaRef.current);
-        } catch (e) {
+        } catch {
           // 이미 제거됨
         }
         textareaRef.current = null;
@@ -135,6 +141,14 @@ export const TextElement = memo(function TextElement({
       onDragEnd={handleDragEnd}
       onTransformEnd={handleTransformEnd}
     >
+      {/* 히트 영역 (클릭/더블클릭 감지용) */}
+      <Rect
+        width={element.width}
+        height={element.height}
+        fill="transparent"
+        listening={true}
+      />
+
       {/* 배경 */}
       {style.background_color && (
         <Rect
@@ -152,16 +166,17 @@ export const TextElement = memo(function TextElement({
       {!isEditing && (
         <Text
           ref={textRef}
-          text={element.content.text || '텍스트를 입력하세요'}
+          text={element.content.text || '더블클릭하여 입력'}
           width={element.width}
           height={element.height}
           fontSize={style.font_size || 16}
           fontStyle={`${style.font_weight || 'normal'} ${style.font_style || 'normal'}`}
-          fill={style.text_color || '#000000'}
+          fill={element.content.text ? (style.text_color || '#000000') : '#9ca3af'}
           align={style.text_align || 'left'}
           verticalAlign="middle"
           padding={8}
           opacity={style.opacity ?? 1}
+          listening={false}
         />
       )}
 

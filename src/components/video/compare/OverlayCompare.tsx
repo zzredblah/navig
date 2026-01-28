@@ -12,6 +12,11 @@ interface OverlayCompareProps {
   onTimeUpdate: (time: number) => void;
   onDurationChange: (duration: number) => void;
   syncEnabled: boolean;
+  // 오디오 설정
+  leftMuted?: boolean;
+  rightMuted?: boolean;
+  leftVolume?: number;
+  rightVolume?: number;
 }
 
 export function OverlayCompare({
@@ -22,6 +27,10 @@ export function OverlayCompare({
   onTimeUpdate,
   onDurationChange,
   syncEnabled,
+  leftMuted = false,
+  rightMuted = true,
+  leftVolume = 1,
+  rightVolume = 1,
 }: OverlayCompareProps) {
   const leftVideoRef = useRef<HTMLVideoElement>(null);
   const rightVideoRef = useRef<HTMLVideoElement>(null);
@@ -150,14 +159,24 @@ export function OverlayCompare({
     };
   }, [onTimeUpdate, onDurationChange, syncEnabled]);
 
+  // 볼륨 업데이트
+  useEffect(() => {
+    if (leftVideoRef.current) {
+      leftVideoRef.current.volume = leftVolume;
+    }
+    if (rightVideoRef.current) {
+      rightVideoRef.current.volume = rightVolume;
+    }
+  }, [leftVolume, rightVolume]);
+
   return (
     <div className="relative w-full aspect-video bg-black overflow-hidden">
       {/* 좌측 영상 (베이스) */}
       <video
         ref={leftVideoRef}
         src={leftVideo.url}
-        className="absolute inset-0 w-full h-full object-contain"
-        muted
+        className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+        muted={leftMuted}
         playsInline
       />
 
@@ -165,9 +184,9 @@ export function OverlayCompare({
       <video
         ref={rightVideoRef}
         src={rightVideo.url}
-        className="absolute inset-0 w-full h-full object-contain transition-opacity duration-150"
+        className="absolute inset-0 w-full h-full object-contain transition-opacity duration-150 pointer-events-none"
         style={{ opacity }}
-        muted
+        muted={rightMuted}
         playsInline
       />
 
@@ -179,8 +198,8 @@ export function OverlayCompare({
         {rightVideo.label} (오버레이)
       </div>
 
-      {/* 투명도 컨트롤 */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 bg-black/80 backdrop-blur-sm rounded-lg shadow-lg border border-white/10">
+      {/* 투명도 컨트롤 - 영상 중앙 하단에서 위로 올림 */}
+      <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 bg-black/80 backdrop-blur-sm rounded-lg shadow-lg border border-white/10">
         <Label className="text-white text-xs whitespace-nowrap font-medium">
           {leftVideo.label}
         </Label>
@@ -198,7 +217,7 @@ export function OverlayCompare({
       </div>
 
       {/* 투명도 퍼센트 표시 */}
-      <div className="absolute bottom-16 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/60 rounded text-white text-sm font-medium">
+      <div className="absolute bottom-32 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/60 rounded text-white text-sm font-medium">
         {rightVideo.label}: {Math.round(opacity * 100)}%
       </div>
     </div>

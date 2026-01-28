@@ -13,10 +13,15 @@ interface MenuItem {
 }
 
 const allMenuItems: MenuItem[] = [
+  // 메인 메뉴 (사이드바 순서와 동일)
   { title: '대시보드', href: '/dashboard', alwaysVisible: true },
   { title: '프로젝트', href: '/projects', alwaysVisible: false },
   { title: '문서', href: '/documents', alwaysVisible: false },
+  { title: '영상', href: '/videos', alwaysVisible: false },
+  { title: '레퍼런스 보드', href: '/boards', alwaysVisible: false },
   { title: '팀 멤버', href: '/team', alwaysVisible: false },
+  { title: '알림', href: '/notifications', alwaysVisible: false },
+  // 하단 메뉴
   { title: '휴지통', href: '/documents/trash', alwaysVisible: false },
   { title: '설정', href: '/settings', alwaysVisible: true },
   { title: '도움말', href: '/help', alwaysVisible: false },

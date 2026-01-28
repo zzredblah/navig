@@ -24,9 +24,12 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 // R2 버킷 타입
-export type R2Bucket = 'avatars' | 'videos';
+export type R2Bucket = 'avatars' | 'videos' | 'src';
 
 // 버킷 설정 (이름 + 퍼블릭 URL)
+// - avatars: 사용자 아바타 전용
+// - videos: 영상 파일 전용
+// - src: 기타 모든 파일 (썸네일, 채팅 첨부파일, 문서 등)
 const BUCKET_CONFIG: Record<R2Bucket, { name: string; publicUrl: string }> = {
   avatars: {
     name: process.env.R2_BUCKET_AVATARS || 'navig-avatars',
@@ -35,6 +38,10 @@ const BUCKET_CONFIG: Record<R2Bucket, { name: string; publicUrl: string }> = {
   videos: {
     name: process.env.R2_BUCKET_VIDEOS || 'navig-videos',
     publicUrl: process.env.R2_PUBLIC_URL_VIDEOS || '',
+  },
+  src: {
+    name: process.env.R2_BUCKET_SRC || 'navig-src',
+    publicUrl: process.env.R2_PUBLIC_URL_SRC || '',
   },
 };
 

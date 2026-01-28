@@ -41,11 +41,12 @@ export async function GET(request: NextRequest) {
     // Admin 클라이언트 사용 (RLS 우회)
     const adminClient = createAdminClient();
 
-    // 사용자가 참여한 프로젝트 ID 가져오기 (project_members 테이블)
+    // 사용자가 참여한 프로젝트 ID 가져오기 (초대 수락한 경우만)
     const { data: memberProjects, error: memberError } = await adminClient
       .from('project_members')
       .select('project_id')
-      .eq('user_id', user.id);
+      .eq('user_id', user.id)
+      .not('joined_at', 'is', null); // 초대 수락한 멤버만
 
     console.log('[Projects API GET] memberProjects:', memberProjects?.length, 'error:', memberError?.message);
 
@@ -159,13 +160,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 생성자를 owner로 project_members에 추가
+    // 생성자를 owner로 project_members에 추가 (즉시 참여 상태)
     const { error: memberError } = await adminClient
       .from('project_members')
       .insert({
         project_id: project.id,
         user_id: user.id,
         role: 'owner',
+        joined_at: new Date().toISOString(), // 소유자는 즉시 참여 상태
       });
 
     if (memberError) {

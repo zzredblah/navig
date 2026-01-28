@@ -11,6 +11,11 @@ interface WipeCompareProps {
   onTimeUpdate: (time: number) => void;
   onDurationChange: (duration: number) => void;
   syncEnabled: boolean;
+  // 오디오 설정
+  leftMuted?: boolean;
+  rightMuted?: boolean;
+  leftVolume?: number;
+  rightVolume?: number;
 }
 
 export function WipeCompare({
@@ -21,6 +26,10 @@ export function WipeCompare({
   onTimeUpdate,
   onDurationChange,
   syncEnabled,
+  leftMuted = false,
+  rightMuted = true,
+  leftVolume = 1,
+  rightVolume = 1,
 }: WipeCompareProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const leftVideoRef = useRef<HTMLVideoElement>(null);
@@ -169,11 +178,11 @@ export function WipeCompare({
       if (!isDragging || !containerRef.current) return;
 
       const rect = containerRef.current.getBoundingClientRect();
-      // 핸들이 (x/2, y/2)에 있으므로, 마우스 위치를 2배로 계산하여 핸들이 마우스를 따라가도록 함
+      // 마우스 위치를 그대로 사용하여 대각선이 전체 화면을 커버할 수 있게 함
       const mouseX = ((e.clientX - rect.left) / rect.width) * 100;
       const mouseY = ((e.clientY - rect.top) / rect.height) * 100;
-      const x = Math.max(0, Math.min(100, mouseX * 2));
-      const y = Math.max(0, Math.min(100, mouseY * 2));
+      const x = Math.max(0, Math.min(200, mouseX * 2));
+      const y = Math.max(0, Math.min(200, mouseY * 2));
       setWipePosition({ x, y });
     },
     [isDragging]
@@ -195,11 +204,11 @@ export function WipeCompare({
 
       const touch = e.touches[0];
       const rect = containerRef.current.getBoundingClientRect();
-      // 핸들이 (x/2, y/2)에 있으므로, 터치 위치를 2배로 계산하여 핸들이 터치를 따라가도록 함
+      // 터치 위치를 그대로 사용하여 대각선이 전체 화면을 커버할 수 있게 함
       const touchX = ((touch.clientX - rect.left) / rect.width) * 100;
       const touchY = ((touch.clientY - rect.top) / rect.height) * 100;
-      const x = Math.max(0, Math.min(100, touchX * 2));
-      const y = Math.max(0, Math.min(100, touchY * 2));
+      const x = Math.max(0, Math.min(200, touchX * 2));
+      const y = Math.max(0, Math.min(200, touchY * 2));
       setWipePosition({ x, y });
     },
     [isDragging]
@@ -222,6 +231,16 @@ export function WipeCompare({
     };
   }, [isDragging, handleMouseMove, handleMouseUp, handleTouchMove]);
 
+  // 볼륨 업데이트
+  useEffect(() => {
+    if (leftVideoRef.current) {
+      leftVideoRef.current.volume = leftVolume;
+    }
+    if (rightVideoRef.current) {
+      rightVideoRef.current.volume = rightVolume;
+    }
+  }, [leftVolume, rightVolume]);
+
   return (
     <div
       ref={containerRef}
@@ -232,7 +251,7 @@ export function WipeCompare({
         ref={rightVideoRef}
         src={rightVideo.url}
         className="absolute inset-0 w-full h-full object-contain"
-        muted
+        muted={rightMuted}
         playsInline
       />
 
@@ -242,7 +261,7 @@ export function WipeCompare({
         src={leftVideo.url}
         className="absolute inset-0 w-full h-full object-contain"
         style={{ clipPath: getClipPath() }}
-        muted
+        muted={leftMuted}
         playsInline
       />
 

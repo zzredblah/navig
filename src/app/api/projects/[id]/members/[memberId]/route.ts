@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { updateMemberSchema } from '@/lib/validations/project';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -12,6 +12,7 @@ export async function PATCH(
   try {
     const { id, memberId } = await params;
     const supabase = await createClient();
+    const adminClient = createAdminClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -22,12 +23,13 @@ export async function PATCH(
       );
     }
 
-    // 현재 사용자의 권한 확인 (owner만 역할 변경 가능)
-    const { data: currentMember } = await supabase
+    // 현재 사용자의 권한 확인 (초대 수락한 owner만 역할 변경 가능)
+    const { data: currentMember } = await adminClient
       .from('project_members')
       .select('role')
       .eq('project_id', id)
       .eq('user_id', user.id)
+      .not('joined_at', 'is', null) // 초대 수락한 멤버만
       .single();
 
     if (!currentMember || currentMember.role !== 'owner') {
@@ -38,7 +40,7 @@ export async function PATCH(
     }
 
     // 대상 멤버 확인
-    const { data: targetMember } = await supabase
+    const { data: targetMember } = await adminClient
       .from('project_members')
       .select('user_id, role')
       .eq('id', memberId)
@@ -64,7 +66,7 @@ export async function PATCH(
     const validatedData = updateMemberSchema.parse(body);
 
     // 멤버 역할 업데이트
-    const { data: updatedMember, error: updateError } = await supabase
+    const { data: updatedMember, error: updateError } = await adminClient
       .from('project_members')
       .update({ role: validatedData.role })
       .eq('id', memberId)
@@ -110,6 +112,7 @@ export async function DELETE(
   try {
     const { id, memberId } = await params;
     const supabase = await createClient();
+    const adminClient = createAdminClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -120,12 +123,13 @@ export async function DELETE(
       );
     }
 
-    // 현재 사용자의 권한 확인
-    const { data: currentMember } = await supabase
+    // 현재 사용자의 권한 확인 (초대 수락한 멤버만)
+    const { data: currentMember } = await adminClient
       .from('project_members')
       .select('role')
       .eq('project_id', id)
       .eq('user_id', user.id)
+      .not('joined_at', 'is', null) // 초대 수락한 멤버만
       .single();
 
     if (!currentMember) {
@@ -136,7 +140,7 @@ export async function DELETE(
     }
 
     // 대상 멤버 확인
-    const { data: targetMember } = await supabase
+    const { data: targetMember } = await adminClient
       .from('project_members')
       .select('user_id, role')
       .eq('id', memberId)
@@ -177,7 +181,7 @@ export async function DELETE(
       }
     }
 
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await adminClient
       .from('project_members')
       .delete()
       .eq('id', memberId);

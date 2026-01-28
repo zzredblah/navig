@@ -1,6 +1,6 @@
 /**
  * 채팅 첨부 파일 업로드 API
- * POST - 파일 업로드 (R2)
+ * POST - 파일 업로드 (R2 - navig-src 버킷)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -81,11 +81,11 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // R2에 업로드 (videos 버킷의 chat-attachments 폴더 사용)
+    // R2에 업로드 (src 버킷의 chat-attachments 폴더 사용)
     const fileKey = generateFileKey('chat-attachments', file.name, user.id);
     const contentType = file.type || getContentType(file.name);
 
-    const { url } = await uploadFile('videos', fileKey, buffer, contentType);
+    const { url } = await uploadFile('src', fileKey, buffer, contentType);
 
     // 응답
     return NextResponse.json({

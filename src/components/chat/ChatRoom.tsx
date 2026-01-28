@@ -289,11 +289,15 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
   useLayoutEffect(() => {
     // 초기 로드 시 스크롤
     if (shouldScrollToBottomRef.current && !isLoading && messages.length > 0) {
+      // 즉시 스크롤 시도
       scrollToBottomInstant();
       shouldScrollToBottomRef.current = false;
-      // 스크롤 완료 후 ready 상태로 전환
+
+      // DOM 렌더링 완료 대기 후 다시 한번 스크롤 (확실히 하기 위해)
       requestAnimationFrame(() => {
+        scrollToBottomInstant();
         requestAnimationFrame(() => {
+          scrollToBottomInstant();
           setIsReady(true);
         });
       });
@@ -329,11 +333,16 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
       if (messages.length === 0) {
         setIsReady(true);
       } else {
-        // 메시지가 있는데 isReady가 안됐으면 (useLayoutEffect가 안 돌았으면) 강제로 설정
-        requestAnimationFrame(() => {
+        // 메시지가 있는데 isReady가 안됐으면 (useLayoutEffect가 안 돌았으면) 강제로 스크롤
+        const scrollWithRetry = () => {
           scrollToBottomInstant();
-          setIsReady(true);
-        });
+          // 100ms 후 다시 한번 스크롤 (이미지/미디어 로딩 등으로 인한 높이 변화 대응)
+          setTimeout(() => {
+            scrollToBottomInstant();
+            setIsReady(true);
+          }, 100);
+        };
+        requestAnimationFrame(scrollWithRetry);
       }
     }
   }, [isLoading, isReady, messages.length, scrollToBottomInstant]);
@@ -426,10 +435,12 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
 
   // 읽음 상태 실시간 구독 (unread_count 업데이트)
   useEffect(() => {
+    if (!currentUserId) return;
+
     const supabase = createClient();
 
     const readChannel = supabase
-      .channel(`chat_reads:${roomId}`)
+      .channel(`chat_reads:${roomId}:${currentUserId}`)
       .on(
         'postgres_changes',
         {
@@ -443,17 +454,27 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
           // 내가 읽은 건 무시 (이미 처리됨)
           if (user_id === currentUserId) return;
 
-          // 해당 메시지의 unread_count 감소
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.id !== message_id) return msg;
+          // 해당 메시지의 unread_count 감소 (해당 메시지가 없으면 prev 그대로 반환)
+          setMessages((prev) => {
+            const messageIndex = prev.findIndex((m) => m.id === message_id);
+            // 해당 메시지가 현재 방에 없으면 상태 변경 안 함
+            if (messageIndex === -1) return prev;
+
+            return prev.map((msg, idx) => {
+              if (idx !== messageIndex) return msg;
               const newUnreadCount = Math.max(0, (msg.unread_count || 0) - 1);
               return { ...msg, unread_count: newUnreadCount };
-            })
-          );
+            });
+          });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[ChatRoom] 읽음 상태 구독 성공');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[ChatRoom] 읽음 상태 구독 실패');
+        }
+      });
 
     return () => {
       supabase.removeChannel(readChannel);

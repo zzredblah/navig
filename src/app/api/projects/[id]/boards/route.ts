@@ -50,13 +50,14 @@ export async function GET(
       return NextResponse.json({ error: '프로젝트를 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    // 프로젝트 멤버 또는 소유자인지 확인
+    // 프로젝트 멤버 또는 소유자인지 확인 (초대 수락한 멤버만)
     const isOwner = project.client_id === user.id;
     const { data: member } = await adminClient
       .from('project_members')
       .select('role')
       .eq('project_id', projectId)
       .eq('user_id', user.id)
+      .not('joined_at', 'is', null) // 초대 수락한 멤버만
       .single();
 
     if (!isOwner && !member) {
@@ -79,8 +80,33 @@ export async function GET(
       return NextResponse.json({ error: '보드 목록을 불러오는데 실패했습니다.' }, { status: 500 });
     }
 
+    // 각 보드의 요소 수와 타입별 개수 조회 + 첫 번째 이미지 미리보기
+    const boardsWithStats = await Promise.all(
+      (boards || []).map(async (board) => {
+        const { data: elements } = await adminClient
+          .from('board_elements')
+          .select('type, content')
+          .eq('board_id', board.id);
+
+        const elementStats = {
+          total: elements?.length || 0,
+          images: elements?.filter(e => e.type === 'image').length || 0,
+          videos: elements?.filter(e => e.type === 'video').length || 0,
+          texts: elements?.filter(e => e.type === 'text').length || 0,
+          stickies: elements?.filter(e => e.type === 'sticky').length || 0,
+          shapes: elements?.filter(e => e.type === 'shape').length || 0,
+        };
+
+        // 첫 번째 이미지 요소의 URL을 미리보기로 사용
+        const firstImage = elements?.find(e => e.type === 'image');
+        const previewImageUrl = firstImage?.content?.url || null;
+
+        return { ...board, elementStats, previewImageUrl };
+      })
+    );
+
     return NextResponse.json({
-      data: boards || [],
+      data: boardsWithStats,
       total: count || 0,
       page,
       limit,
@@ -133,13 +159,14 @@ export async function POST(
       return NextResponse.json({ error: '프로젝트를 찾을 수 없습니다.' }, { status: 404 });
     }
 
-    // 프로젝트 멤버 또는 소유자인지 확인 (편집 권한 필요)
+    // 프로젝트 멤버 또는 소유자인지 확인 (초대 수락한 멤버만, 편집 권한 필요)
     const isOwner = project.client_id === user.id;
     const { data: member } = await adminClient
       .from('project_members')
       .select('role')
       .eq('project_id', projectId)
       .eq('user_id', user.id)
+      .not('joined_at', 'is', null) // 초대 수락한 멤버만
       .single();
 
     const canEdit = isOwner || (member && ['owner', 'approver', 'editor'].includes(member.role));

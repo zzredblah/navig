@@ -1,7 +1,7 @@
 # NAVIG 오류 방지 가이드 (Error Prevention Guide)
 
-**버전:** 2.4
-**최종 수정:** 2026-01-27
+**버전:** 2.5
+**최종 수정:** 2026-01-28
 **목적:** 개발 중 발생한 오류와 해결책을 문서화하여 재발 방지
 
 ---
@@ -1132,18 +1132,261 @@ const handleKeyDown = (e: React.KeyboardEvent) => {
 - [ ] DropdownMenu, Collapsible, Dialog 등에 필수 적용
 - [ ] 서버 렌더링 시 정적 대체 UI 표시
 
+### 프로젝트 멤버 권한 확인 시 (§17)
+- [ ] `project_members` 쿼리에 `.not('joined_at', 'is', null)` 추가 필수 (§17.1)
+- [ ] 초대 대기 중인 멤버는 프로젝트 접근 불가하도록 처리
+- [ ] 모든 프로젝트 관련 API (목록, 상세, 멤버, 비디오, 문서, 보드)에 적용
+
+### 로그아웃 처리 시 (§18)
+- [ ] `clearAllAppData()` 호출하여 로컬 데이터 삭제 (§18.1)
+- [ ] Zustand persist store 초기화
+- [ ] localStorage의 `navig-*`, `sb-*` 키 삭제
+
+### API 응답 처리 시 (추가) (§19)
+- [ ] `fetch` 후 `response.ok` 체크 필수 (§19.1)
+- [ ] `response.ok`가 `false`면 `response.json()` 호출 금지
+- [ ] HTML 응답 시 JSON 파싱 에러 방지
+
+### 액션 버튼 상태 관리 시 (§20)
+- [ ] 마운트 시 실제 DB 상태 확인 (§20.1)
+- [ ] 로컬 상태만 의존하지 않기
+- [ ] 상태 확인 중 로딩 UI 표시
+- [ ] 에러 시 안전한 방향으로 처리 (버튼 숨김 등)
+
 ---
 
-## 16. 관련 파일
+## 17. 프로젝트 멤버 권한 확인 (joined_at 필터)
+
+### 17.1 문제: 초대 수락 전 프로젝트 접근 가능
+
+**원인:**
+- `project_members` 테이블에서 `joined_at` 필터 없이 조회
+- 초대만 받고 수락하지 않은 사용자도 프로젝트에 접근 가능
+- 프로젝트 목록, 상세, 멤버, 비디오, 문서, 보드 등 모든 API 영향
+
+**해결책:**
+```typescript
+// ❌ Bad: joined_at 필터 없음 (초대 대기 중인 멤버도 포함됨)
+const { data: memberProjects } = await adminClient
+  .from('project_members')
+  .select('project_id')
+  .eq('user_id', user.id);
+
+// ✅ Good: joined_at이 있는 멤버만 조회 (실제로 수락한 멤버만)
+const { data: memberProjects } = await adminClient
+  .from('project_members')
+  .select('project_id')
+  .eq('user_id', user.id)
+  .not('joined_at', 'is', null);  // 초대 수락한 멤버만
+```
+
+**적용 대상 API:**
+- `GET /api/projects` - 프로젝트 목록
+- `GET/PATCH/DELETE /api/projects/[id]` - 프로젝트 상세
+- `GET/POST /api/projects/[id]/members` - 멤버 관리
+- `PATCH/DELETE /api/projects/[id]/members/[memberId]` - 멤버 수정/삭제
+- `GET/POST /api/projects/[id]/videos` - 비디오
+- `GET/POST /api/projects/[id]/documents` - 문서
+- `GET/POST /api/projects/[id]/boards` - 레퍼런스 보드
+- `GET /api/projects/[id]/feedback-stats` - 피드백 통계
+
+**규칙:**
+- 프로젝트 접근 권한 확인 시 **반드시** `.not('joined_at', 'is', null)` 추가
+- 새 프로젝트 관련 API 작성 시 체크리스트에 포함
+
+---
+
+## 18. 로그아웃 시 로컬 데이터 정리
+
+### 18.1 문제: 로그아웃 후 다른 계정 로그인 시 이전 데이터 표시
+
+**원인:**
+- Zustand의 `persist` 미들웨어가 localStorage에 상태 저장
+- 로그아웃 시 서버 세션만 종료하고 localStorage 데이터 미삭제
+- 다른 계정 로그인 시 이전 계정의 선택된 프로젝트 등이 표시됨
+
+**해결책:**
+```typescript
+// ❌ Bad: 서버 로그아웃만 수행
+const handleLogout = async () => {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  router.push('/login');
+};
+
+// ✅ Good: 로컬 데이터도 함께 삭제
+import { clearAllAppData } from '@/stores/project-context-store';
+
+const handleLogout = async () => {
+  // 1. 먼저 로컬 데이터 클리어
+  clearAllAppData();
+
+  // 2. 서버에 로그아웃 요청
+  await fetch('/api/auth/logout', { method: 'POST' });
+
+  // 3. 로그인 페이지로 이동
+  router.push('/login');
+  router.refresh();
+};
+
+// clearAllAppData 구현 예시
+export function clearAllAppData() {
+  // Zustand 상태 초기화
+  useProjectContextStore.getState().clearSelectedProject();
+
+  // localStorage 정리 (navig-, sb- 접두사)
+  if (typeof window !== 'undefined') {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && (key.startsWith('navig-') || key.startsWith('sb-'))) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+  }
+}
+```
+
+**규칙:**
+- 로그아웃 시 `clearAllAppData()` 호출 필수
+- 새 persist store 추가 시 `clearAllAppData()`에 해당 store 초기화 로직 추가
+- localStorage 키 네이밍: `navig-` 접두사 사용 (일괄 삭제 용이)
+
+---
+
+## 19. API 응답 JSON 파싱 에러 방지
+
+### 19.1 문제: API 응답이 HTML일 때 JSON 파싱 에러
+
+**원인:**
+- 인증 실패, 서버 에러 등으로 API가 HTML 에러 페이지 반환
+- `response.json()` 호출 시 `Unexpected token '<'` 에러 발생
+- 에러 메시지: `"Unexpected token '<', "<!DOCTYPE "... is not valid JSON"`
+
+**해결책:**
+```typescript
+// ❌ Bad: response.ok 체크 없이 바로 json() 호출
+const response = await fetch('/api/projects');
+const data = await response.json();  // HTML 반환 시 에러!
+
+// ✅ Good: response.ok 체크 후 json() 호출
+const response = await fetch('/api/projects');
+if (!response.ok) {
+  // 에러 처리 (JSON 파싱 시도하지 않음)
+  console.error('API 에러:', response.status);
+  return null;
+}
+const data = await response.json();
+```
+
+**Promise 체인 사용 시:**
+```typescript
+// ✅ Good: then 체인에서 ok 체크
+fetch(`/api/projects/${projectId}`)
+  .then((res) => {
+    if (!res.ok) return null;  // 에러 시 null 반환
+    return res.json();
+  })
+  .then((data) => {
+    if (data?.data?.project) {
+      // 정상 처리
+    }
+  })
+  .catch(() => {
+    // 네트워크 에러 등 처리
+  });
+```
+
+**규칙:**
+- 모든 `fetch` 후 `response.ok` 체크 필수
+- `response.ok`가 `false`면 `response.json()` 호출 금지
+- try-catch와 함께 사용하여 파싱 에러도 대비
+
+---
+
+## 20. 컴포넌트 상태 vs 데이터베이스 상태 동기화
+
+### 20.1 문제: 이미 처리된 초대에 수락/거절 버튼 표시
+
+**원인:**
+- 초대 수락/거절 후 `inviteHandled` 상태를 로컬에서만 관리
+- 페이지 새로고침 시 상태 초기화되어 버튼이 다시 표시됨
+- 컴포넌트 로컬 상태와 실제 DB 상태 불일치
+
+**해결책:**
+```typescript
+// ❌ Bad: 로컬 상태만 의존
+const [inviteHandled, setInviteHandled] = useState(false);
+
+// 수락 시
+const handleAccept = () => {
+  // API 호출...
+  setInviteHandled(true);  // 새로고침하면 다시 false
+};
+
+// ✅ Good: 마운트 시 실제 상태 확인
+const [inviteHandled, setInviteHandled] = useState(false);
+const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+
+useEffect(() => {
+  if (!isProjectInvite) return;
+
+  async function checkInvitationStatus() {
+    setIsCheckingStatus(true);
+    try {
+      // 실제 초대 상태 조회 API 호출
+      const response = await fetch(`/api/invitations/${memberId}/status`);
+      if (response.ok) {
+        const data = await response.json();
+        // pending이 아니면 이미 처리된 것
+        if (data.status !== 'pending') {
+          setInviteHandled(true);
+        }
+      } else if (response.status === 404) {
+        // 멤버가 존재하지 않음 (거절됨)
+        setInviteHandled(true);
+      }
+    } catch {
+      setInviteHandled(true);  // 에러 시 버튼 숨김 (안전하게)
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  }
+
+  checkInvitationStatus();
+}, [isProjectInvite, memberId]);
+
+// UI에서 로딩 상태 표시
+{isCheckingStatus && <Loader2 className="animate-spin" />}
+{!isCheckingStatus && !inviteHandled && (
+  <Button onClick={handleAccept}>수락</Button>
+)}
+```
+
+**규칙:**
+- 액션 버튼(수락/거절/삭제 등)은 마운트 시 실제 상태 확인
+- 로컬 상태만 의존하지 말고 DB 상태와 동기화
+- 상태 확인 중 로딩 UI 표시
+- 에러 발생 시 안전한 방향으로 처리 (버튼 숨김 등)
+
+---
+
+## 21. 관련 파일
 
 | 파일 | 설명 |
 |------|------|
 | `src/lib/supabase/server.ts` | Supabase 클라이언트 (일반 + Admin) |
 | `src/lib/cloudflare/r2.ts` | R2 스토리지 클라이언트 |
-| `src/app/api/projects/route.ts` | 프로젝트 API (참고용 패턴) |
+| `src/app/api/projects/route.ts` | 프로젝트 API (joined_at 필터 패턴) |
+| `src/app/api/projects/[id]/route.ts` | 프로젝트 상세 API (joined_at 필터 패턴) |
+| `src/app/api/invitations/[memberId]/status/route.ts` | 초대 상태 확인 API (§20 패턴) |
 | `src/app/api/chat/messages/[id]/reactions/route.ts` | 리액션 API (멱등성 패턴) |
 | `src/app/api/chat/rooms/[id]/messages/route.ts` | 채팅 메시지 API (별도 쿼리 패턴) |
 | `src/app/api/chat/attachments/route.ts` | 채팅 첨부파일 R2 업로드 |
+| `src/stores/project-context-store.ts` | 프로젝트 컨텍스트 (clearAllAppData 패턴) |
+| `src/components/layout/Header.tsx` | 헤더 (로그아웃 데이터 정리 패턴) |
+| `src/components/layout/Sidebar.tsx` | 사이드바 (response.ok 체크 패턴) |
+| `src/components/notifications/NotificationItem.tsx` | 알림 아이템 (DB 상태 동기화 패턴) |
 | `src/components/chat/ChatRoom.tsx` | 채팅방 (Optimistic Update 패턴) |
 | `src/components/chat/ChatMessage.tsx` | 채팅 메시지 (그룹화 패턴) |
 | `src/components/chat/ChatInput.tsx` | 채팅 입력 (비차단 전송 패턴) |

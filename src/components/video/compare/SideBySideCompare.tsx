@@ -10,6 +10,11 @@ interface SideBySideCompareProps {
   onTimeUpdate: (time: number) => void;
   onDurationChange: (duration: number) => void;
   syncEnabled: boolean;
+  // 오디오 설정
+  leftMuted?: boolean;
+  rightMuted?: boolean;
+  leftVolume?: number;
+  rightVolume?: number;
 }
 
 export function SideBySideCompare({
@@ -20,6 +25,10 @@ export function SideBySideCompare({
   onTimeUpdate,
   onDurationChange,
   syncEnabled,
+  leftMuted = false,
+  rightMuted = true,
+  leftVolume = 1,
+  rightVolume = 1,
 }: SideBySideCompareProps) {
   const leftVideoRef = useRef<HTMLVideoElement>(null);
   const rightVideoRef = useRef<HTMLVideoElement>(null);
@@ -149,6 +158,16 @@ export function SideBySideCompare({
     };
   }, [onTimeUpdate, onDurationChange, syncEnabled]);
 
+  // 볼륨 업데이트
+  useEffect(() => {
+    if (leftVideoRef.current) {
+      leftVideoRef.current.volume = leftVolume;
+    }
+    if (rightVideoRef.current) {
+      rightVideoRef.current.volume = rightVolume;
+    }
+  }, [leftVolume, rightVolume]);
+
   return (
     <div className="relative w-full aspect-video bg-black overflow-hidden">
       <div className="absolute inset-0 flex gap-1">
@@ -158,7 +177,7 @@ export function SideBySideCompare({
             ref={leftVideoRef}
             src={leftVideo.url}
             className="absolute inset-0 w-full h-full object-contain"
-            muted
+            muted={leftMuted}
             playsInline
           />
           <div className="absolute top-2 left-2 px-2 py-1 bg-black/60 text-white text-xs rounded font-medium">
@@ -175,7 +194,7 @@ export function SideBySideCompare({
             ref={rightVideoRef}
             src={rightVideo.url}
             className="absolute inset-0 w-full h-full object-contain"
-            muted
+            muted={rightMuted}
             playsInline
           />
           <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 text-white text-xs rounded font-medium">

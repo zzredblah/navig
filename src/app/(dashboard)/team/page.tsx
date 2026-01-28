@@ -1,12 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Users, UserPlus, Mail, CheckCircle, Clock, Trash2 } from 'lucide-react';
+import { Users, UserPlus, CheckCircle, Clock, Trash2, FolderOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -15,6 +14,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { InviteMemberModal } from '@/components/project/InviteMemberModal';
 
 interface TeamMember {
   id: string;
@@ -37,6 +44,7 @@ interface TeamMember {
 
 const roleLabels: Record<string, string> = {
   owner: '소유자',
+  approver: '승인자',
   editor: '편집자',
   viewer: '뷰어',
 };
@@ -44,12 +52,10 @@ const roleLabels: Record<string, string> = {
 export default function TeamPage() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showProjectSelectModal, setShowProjectSelectModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('editor');
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [projects, setProjects] = useState<{ id: string; title: string }[]>([]);
-  const [inviting, setInviting] = useState(false);
 
   const fetchMembers = useCallback(async () => {
     setLoading(true);
@@ -83,32 +89,24 @@ export default function TeamPage() {
     fetchProjects();
   }, [fetchMembers, fetchProjects]);
 
-  const handleInvite = async () => {
-    if (!inviteEmail.trim() || !selectedProjectId) return;
+  // 프로젝트 선택 후 초대 모달 열기
+  const handleProjectSelect = () => {
+    if (!selectedProjectId) return;
+    setShowProjectSelectModal(false);
+    setShowProjectSelectModal(true);
+  };
 
-    setInviting(true);
-    try {
-      const res = await fetch(`/api/projects/${selectedProjectId}/members`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
-      });
+  // 초대 성공 시
+  const handleInviteSuccess = () => {
+    setShowInviteModal(false);
+    setSelectedProjectId('');
+    fetchMembers();
+  };
 
-      if (res.ok) {
-        setShowInviteModal(false);
-        setInviteEmail('');
-        setInviteRole('editor');
-        setSelectedProjectId('');
-        fetchMembers();
-      } else {
-        const data = await res.json();
-        alert(data.error || '초대에 실패했습니다');
-      }
-    } catch {
-      alert('초대에 실패했습니다');
-    } finally {
-      setInviting(false);
-    }
+  // 초대 모달 닫기
+  const handleInviteClose = () => {
+    setShowInviteModal(false);
+    setSelectedProjectId('');
   };
 
   const handleRemoveMember = async (memberId: string, projectId: string) => {
@@ -160,7 +158,7 @@ export default function TeamPage() {
           <p className="text-sm text-gray-500 mt-1">프로젝트에 참여하는 멤버를 관리합니다</p>
         </div>
         <Button
-          onClick={() => setShowInviteModal(true)}
+          onClick={() => setShowProjectSelectModal(true)}
           className="bg-primary-600 hover:bg-primary-700"
         >
           <UserPlus className="h-4 w-4 mr-2" />
@@ -222,7 +220,7 @@ export default function TeamPage() {
             <Users className="h-12 w-12 text-gray-300 mb-4" />
             <p className="text-gray-500 mb-2">팀 멤버가 없습니다</p>
             <p className="text-sm text-gray-400 mb-4">프로젝트에 멤버를 초대해보세요</p>
-            <Button variant="outline" onClick={() => setShowInviteModal(true)}>
+            <Button variant="outline" onClick={() => setShowProjectSelectModal(true)}>
               <UserPlus className="h-4 w-4 mr-2" />
               멤버 초대
             </Button>
@@ -284,66 +282,58 @@ export default function TeamPage() {
         </Card>
       )}
 
-      {/* 초대 모달 */}
-      <Dialog open={showInviteModal} onOpenChange={setShowInviteModal}>
+      {/* 프로젝트 선택 모달 */}
+      <Dialog open={showProjectSelectModal} onOpenChange={setShowProjectSelectModal}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>멤버 초대</DialogTitle>
-            <DialogDescription>프로젝트에 새 멤버를 초대합니다</DialogDescription>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderOpen className="h-5 w-5 text-primary-600" />
+              프로젝트 선택
+            </DialogTitle>
+            <DialogDescription>멤버를 초대할 프로젝트를 선택하세요</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <Label className="text-sm font-medium text-gray-700">프로젝트</Label>
-              <select
+              <Select
                 value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                className="w-full h-10 mt-1.5 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-900"
+                onValueChange={setSelectedProjectId}
               >
-                <option value="">프로젝트를 선택하세요</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.title}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-gray-700">이메일</Label>
-              <div className="relative mt-1.5">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="초대할 멤버의 이메일"
-                  className="pl-10"
-                  type="email"
-                />
-              </div>
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-gray-700">역할</Label>
-              <select
-                value={inviteRole}
-                onChange={(e) => setInviteRole(e.target.value)}
-                className="w-full h-10 mt-1.5 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-900"
-              >
-                <option value="editor">편집자</option>
-                <option value="viewer">뷰어</option>
-              </select>
+                <SelectTrigger className="mt-1.5">
+                  <SelectValue placeholder="프로젝트를 선택하세요" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>{p.title}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setShowInviteModal(false)}>
+              <Button variant="ghost" onClick={() => setShowProjectSelectModal(false)}>
                 취소
               </Button>
               <Button
-                onClick={handleInvite}
-                disabled={!inviteEmail.trim() || !selectedProjectId || inviting}
+                onClick={handleProjectSelect}
+                disabled={!selectedProjectId}
                 className="bg-primary-600 hover:bg-primary-700"
               >
-                {inviting ? '초대 중...' : '초대하기'}
+                다음
               </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* 멤버 초대 모달 (InviteMemberModal 사용) */}
+      {selectedProjectId && (
+        <InviteMemberModal
+          isOpen={showInviteModal}
+          onClose={handleInviteClose}
+          onSuccess={handleInviteSuccess}
+          projectId={selectedProjectId}
+        />
+      )}
     </div>
   );
 }

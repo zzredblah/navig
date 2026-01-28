@@ -17,12 +17,23 @@ export interface Board {
   updated_at: string;
 }
 
+export interface BoardElementStats {
+  total: number;
+  images: number;
+  videos: number;
+  texts: number;
+  stickies: number;
+  shapes: number;
+}
+
 export interface BoardWithCreator extends Board {
   creator: {
     id: string;
     name: string;
     avatar_url: string | null;
   };
+  elementStats?: BoardElementStats;
+  previewImageUrl?: string | null;
 }
 
 export type BoardElementType = 'image' | 'video' | 'text' | 'shape' | 'sticky' | 'frame';

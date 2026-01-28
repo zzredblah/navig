@@ -1,0 +1,155 @@
+/**
+ * 프로젝트 초대 수락/거절 API
+ */
+
+import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { NextRequest, NextResponse } from 'next/server';
+
+type RouteParams = Promise<{ memberId: string }>;
+
+// 초대 수락
+export async function POST(
+  request: NextRequest,
+  { params }: { params: RouteParams }
+) {
+  try {
+    const { memberId } = await params;
+    const supabase = await createClient();
+    const adminClient = createAdminClient();
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: '인증이 필요합니다' },
+        { status: 401 }
+      );
+    }
+
+    // 멤버 레코드 조회 (본인 것만)
+    const { data: member, error: memberError } = await adminClient
+      .from('project_members')
+      .select('id, project_id, user_id, role, joined_at')
+      .eq('id', memberId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (memberError || !member) {
+      return NextResponse.json(
+        { error: '초대를 찾을 수 없습니다' },
+        { status: 404 }
+      );
+    }
+
+    // 이미 수락한 경우
+    if (member.joined_at) {
+      return NextResponse.json(
+        { error: '이미 수락한 초대입니다' },
+        { status: 400 }
+      );
+    }
+
+    // 초대 수락 (joined_at 업데이트)
+    const { error: updateError } = await adminClient
+      .from('project_members')
+      .update({ joined_at: new Date().toISOString() })
+      .eq('id', memberId);
+
+    if (updateError) {
+      console.error('[Invitation API] 수락 실패:', updateError);
+      return NextResponse.json(
+        { error: '초대 수락에 실패했습니다' },
+        { status: 500 }
+      );
+    }
+
+    // 프로젝트 정보 가져오기
+    const { data: project } = await adminClient
+      .from('projects')
+      .select('title')
+      .eq('id', member.project_id)
+      .single();
+
+    return NextResponse.json({
+      message: '초대를 수락했습니다',
+      data: {
+        project_id: member.project_id,
+        project_title: project?.title,
+      },
+    });
+  } catch (error) {
+    console.error('[Invitation API] 예외:', error);
+    return NextResponse.json(
+      { error: '서버 오류가 발생했습니다' },
+      { status: 500 }
+    );
+  }
+}
+
+// 초대 거절 (멤버 삭제)
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: RouteParams }
+) {
+  try {
+    const { memberId } = await params;
+    const supabase = await createClient();
+    const adminClient = createAdminClient();
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: '인증이 필요합니다' },
+        { status: 401 }
+      );
+    }
+
+    // 멤버 레코드 조회 (본인 것만)
+    const { data: member, error: memberError } = await adminClient
+      .from('project_members')
+      .select('id, project_id, user_id, joined_at')
+      .eq('id', memberId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (memberError || !member) {
+      return NextResponse.json(
+        { error: '초대를 찾을 수 없습니다' },
+        { status: 404 }
+      );
+    }
+
+    // 이미 수락한 경우 거절 불가
+    if (member.joined_at) {
+      return NextResponse.json(
+        { error: '이미 수락한 초대는 거절할 수 없습니다' },
+        { status: 400 }
+      );
+    }
+
+    // 멤버 레코드 삭제 (초대 거절)
+    const { error: deleteError } = await adminClient
+      .from('project_members')
+      .delete()
+      .eq('id', memberId);
+
+    if (deleteError) {
+      console.error('[Invitation API] 거절 실패:', deleteError);
+      return NextResponse.json(
+        { error: '초대 거절에 실패했습니다' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      message: '초대를 거절했습니다',
+    });
+  } catch (error) {
+    console.error('[Invitation API] 예외:', error);
+    return NextResponse.json(
+      { error: '서버 오류가 발생했습니다' },
+      { status: 500 }
+    );
+  }
+}

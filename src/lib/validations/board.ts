@@ -64,6 +64,7 @@ export const updateBoardSchema = z.object({
   background_color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   grid_enabled: z.boolean().optional(),
   is_public: z.boolean().optional(),
+  thumbnail_url: z.string().url().optional().nullable(),
 });
 
 // 요소 생성

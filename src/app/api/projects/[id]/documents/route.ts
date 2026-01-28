@@ -175,12 +175,13 @@ async function checkProjectAccess(
 
   if (project?.client_id === userId) return true;
 
-  // 프로젝트 멤버 확인
+  // 프로젝트 멤버 확인 (초대 수락한 멤버만)
   const { data: member } = await adminClient
     .from('project_members')
     .select('id')
     .eq('project_id', projectId)
     .eq('user_id', userId)
+    .not('joined_at', 'is', null) // 초대 수락한 멤버만
     .single();
 
   return !!member;

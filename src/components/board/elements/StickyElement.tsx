@@ -42,22 +42,25 @@ export const StickyElement = memo(function StickyElement({
   }, [element.id, onSelect]);
 
   const handleDblClick = useCallback(() => {
-    setIsEditing(true);
     const stage = groupRef.current?.getStage();
-    if (!stage) return;
+    const group = groupRef.current;
+    if (!stage || !group) return;
+
+    setIsEditing(true);
 
     const stageContainer = stage.container();
-    const textNode = textRef.current;
-    if (!textNode) return;
-
-    const textPosition = textNode.getAbsolutePosition();
     const stageBox = stageContainer.getBoundingClientRect();
+
+    // 그룹의 절대 위치 계산
+    const groupPosition = group.getAbsolutePosition();
+    const scale = stage.scaleX();
+    const backgroundColor = element.style.background_color || STICKY_COLORS[0];
 
     // 기존 textarea 제거
     if (textareaRef.current) {
       try {
         document.body.removeChild(textareaRef.current);
-      } catch (e) {
+      } catch {
         // 이미 제거됨
       }
     }
@@ -67,33 +70,31 @@ export const StickyElement = memo(function StickyElement({
     document.body.appendChild(textarea);
 
     const areaPosition = {
-      x: stageBox.left + textPosition.x,
-      y: stageBox.top + textPosition.y,
+      x: stageBox.left + groupPosition.x,
+      y: stageBox.top + groupPosition.y,
     };
-
-    const scale = stage.scaleX();
-    const backgroundColor = element.style.background_color || STICKY_COLORS[0];
 
     textarea.value = element.content.text || '';
     textarea.style.cssText = `
-      position: absolute;
+      position: fixed;
       top: ${areaPosition.y}px;
       left: ${areaPosition.x}px;
-      width: ${(element.width - 16) * scale}px;
-      height: ${(element.height - 16) * scale}px;
-      font-size: ${14 * scale}px;
+      width: ${element.width * scale}px;
+      height: ${element.height * scale}px;
+      font-size: ${(element.style.font_size || 14) * scale}px;
       font-family: sans-serif;
-      padding: 8px;
+      padding: ${12 * scale}px ${8 * scale}px ${8 * scale}px ${8 * scale}px;
       margin: 0;
-      border: none;
+      border: 2px solid #3b82f6;
       outline: none;
       resize: none;
       background: ${backgroundColor};
       overflow: hidden;
-      z-index: 1000;
+      z-index: 9999;
       border-radius: 8px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.15);
       line-height: 1.4;
+      box-sizing: border-box;
     `;
 
     textarea.focus();
@@ -105,7 +106,7 @@ export const StickyElement = memo(function StickyElement({
         saveHistory();
         try {
           document.body.removeChild(textareaRef.current);
-        } catch (e) {
+        } catch {
           // 이미 제거됨
         }
         textareaRef.current = null;
@@ -157,9 +158,10 @@ export const StickyElement = memo(function StickyElement({
         height={element.height}
         fill="rgba(0,0,0,0.1)"
         cornerRadius={8}
+        listening={false}
       />
 
-      {/* 스티키 노트 배경 */}
+      {/* 스티키 노트 배경 - 이벤트 캡처용 */}
       <Rect
         width={element.width}
         height={element.height}
@@ -175,13 +177,14 @@ export const StickyElement = memo(function StickyElement({
         height={6}
         fill="rgba(0,0,0,0.05)"
         cornerRadius={[8, 8, 0, 0]}
+        listening={false}
       />
 
       {/* 텍스트 */}
       {!isEditing && (
         <Text
           ref={textRef}
-          text={element.content.text || '메모를 입력하세요'}
+          text={element.content.text || '더블클릭하여 입력'}
           width={element.width - 16}
           height={element.height - 16}
           x={8}
@@ -189,9 +192,10 @@ export const StickyElement = memo(function StickyElement({
           fontSize={element.style.font_size || 14}
           fontFamily="sans-serif"
           fontStyle={`${element.style.font_weight || 'normal'} ${element.style.font_style || 'normal'}`}
-          fill={element.style.text_color || '#374151'}
+          fill={element.content.text ? (element.style.text_color || '#374151') : '#9ca3af'}
           align={element.style.text_align || 'left'}
           lineHeight={1.4}
+          listening={false}
         />
       )}
     </Group>

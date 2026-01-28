@@ -10,6 +10,7 @@ import { BoardZoomControls } from '@/components/board/BoardZoomControls';
 import { PropertiesPanel } from '@/components/board/panels/PropertiesPanel';
 import { useBoardHotkeys } from '@/hooks/use-board-hotkeys';
 import type { Board, BoardElement } from '@/types/board';
+import type { BoardCanvasRef } from '@/components/board/BoardCanvas';
 
 // 이미지 크기 가져오기
 function getImageDimensions(file: File): Promise<{ width: number; height: number }> {
@@ -77,13 +78,15 @@ export default function BoardDetailPage({
   const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
-  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const canvasRef = useRef<BoardCanvasRef>(null);
   const lastSavedElementsRef = useRef<string>('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const [board, setBoard] = useState<Board | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
-  const [BoardCanvas, setBoardCanvas] = useState<React.ComponentType<{ width: number; height: number }> | null>(null);
+  const [BoardCanvas, setBoardCanvas] = useState<React.ForwardRefExoticComponent<{ width: number; height: number } & React.RefAttributes<BoardCanvasRef>> | null>(null);
+  const [serverElementIds, setServerElementIds] = useState<Set<string>>(new Set()); // 서버에 있는 요소 ID 추적
 
   // 클라이언트에서만 react-konva 로드
   useEffect(() => {
@@ -107,80 +110,101 @@ export default function BoardDetailPage({
     isSaving,
   } = useBoardStore();
 
-  // 키보드 단축키
-  useBoardHotkeys({ enabled: !isLoading });
+  // 수동 저장 (먼저 정의해야 useBoardHotkeys에서 사용 가능)
+  const handleSaveBoard = useCallback(async () => {
+    if (!board || isSaving) return;
 
-  // 자동 저장 (2초 디바운스)
-  useEffect(() => {
-    if (!board || isLoading) return;
+    try {
+      setSaving(true);
 
-    const currentElementsJson = JSON.stringify(elements);
+      const currentElementIds = new Set(elements.map(e => e.id));
 
-    // 변경사항이 없으면 저장하지 않음
-    if (currentElementsJson === lastSavedElementsRef.current) return;
+      // 1. 삭제된 요소 처리 (서버에는 있지만 현재 elements에 없는 것)
+      const deletedIds = [...serverElementIds].filter(id => !currentElementIds.has(id));
+      const deletePromises = deletedIds.map(async (elementId) => {
+        await fetch(`/api/boards/${board.id}/elements/${elementId}`, {
+          method: 'DELETE',
+        });
+      });
 
-    // 기존 타이머 취소
-    if (autoSaveTimerRef.current) {
-      clearTimeout(autoSaveTimerRef.current);
-    }
+      // 2. 요소별로 업데이트 또는 생성
+      const upsertPromises = elements.map(async (element) => {
+        const response = await fetch(`/api/boards/${board.id}/elements/${element.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            position_x: element.position_x,
+            position_y: element.position_y,
+            width: element.width,
+            height: element.height,
+            rotation: element.rotation,
+            z_index: element.z_index,
+            locked: element.locked,
+            content: element.content,
+            style: element.style,
+          }),
+        });
 
-    // 2초 후 자동 저장
-    autoSaveTimerRef.current = setTimeout(async () => {
-      try {
-        setSaving(true);
-
-        // 요소별로 업데이트
-        const promises = elements.map(async (element) => {
-          const response = await fetch(`/api/boards/${board.id}/elements/${element.id}`, {
-            method: 'PATCH',
+        // 새 요소인 경우 (서버에 없는 경우) 생성
+        if (response.status === 404) {
+          await fetch(`/api/boards/${board.id}/elements`, {
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              id: element.id,
+              type: element.type,
               position_x: element.position_x,
               position_y: element.position_y,
               width: element.width,
               height: element.height,
               rotation: element.rotation,
-              z_index: element.z_index,
-              locked: element.locked,
               content: element.content,
               style: element.style,
             }),
           });
+        }
+      });
 
-          // 새 요소인 경우 (서버에 없는 경우) 생성
-          if (response.status === 404) {
-            await fetch(`/api/boards/${board.id}/elements`, {
+      await Promise.all([...deletePromises, ...upsertPromises]);
+
+      // 3. 썸네일 생성 및 업로드
+      if (canvasRef.current && elements.length > 0) {
+        try {
+          const thumbnail = await canvasRef.current.generateThumbnail();
+          if (thumbnail) {
+            await fetch(`/api/boards/${board.id}/thumbnail`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                type: element.type,
-                position_x: element.position_x,
-                position_y: element.position_y,
-                width: element.width,
-                height: element.height,
-                rotation: element.rotation,
-                content: element.content,
-                style: element.style,
-              }),
+              body: JSON.stringify({ thumbnail }),
             });
           }
-        });
-
-        await Promise.all(promises);
-        lastSavedElementsRef.current = currentElementsJson;
-      } catch (error) {
-        console.error('[AutoSave] 저장 실패:', error);
-      } finally {
-        setSaving(false);
+        } catch (thumbnailError) {
+          console.error('[Save] 썸네일 업로드 실패:', thumbnailError);
+          // 썸네일 실패해도 저장은 성공으로 처리
+        }
       }
-    }, 2000);
 
-    return () => {
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-      }
-    };
-  }, [elements, board, isLoading, setSaving]);
+      // 서버 요소 ID 목록 업데이트
+      setServerElementIds(currentElementIds);
+      lastSavedElementsRef.current = JSON.stringify(elements);
+      setHasUnsavedChanges(false);
+    } catch (error) {
+      console.error('[Save] 저장 실패:', error);
+    } finally {
+      setSaving(false);
+    }
+  }, [board, elements, isSaving, setSaving, serverElementIds]);
+
+  // 키보드 단축키 (Ctrl+S 저장 포함)
+  useBoardHotkeys({ enabled: !isLoading, onSave: handleSaveBoard });
+
+  // 변경사항 추적
+  useEffect(() => {
+    if (!board || isLoading) return;
+
+    const currentElementsJson = JSON.stringify(elements);
+    setHasUnsavedChanges(currentElementsJson !== lastSavedElementsRef.current);
+  }, [elements, board, isLoading]);
 
   // 캔버스 크기 계산 - board가 로드된 후에만 실행
   useEffect(() => {
@@ -277,6 +301,9 @@ export default function BoardDetailPage({
           setBoard(data.board);
           initialize(resolvedParams.boardId, resolvedParams.id);
           setElements(data.elements || []);
+          // 서버에 있는 요소 ID 추적 (삭제 감지용)
+          const serverIds = new Set<string>((data.elements || []).map((e: BoardElement) => e.id));
+          setServerElementIds(serverIds);
           lastSavedElementsRef.current = JSON.stringify(data.elements || []);
         } else if (response.status === 404) {
           router.push(`/projects/${resolvedParams.id}/boards`);
@@ -438,6 +465,8 @@ export default function BoardDetailPage({
           onUpdateBoard={handleUpdateBoard}
           onShare={handleShare}
           onDelete={handleDeleteBoard}
+          onSave={handleSaveBoard}
+          hasUnsavedChanges={hasUnsavedChanges}
         />
       </div>
 
@@ -459,16 +488,8 @@ export default function BoardDetailPage({
         >
           {canRenderCanvas ? (
             <>
-              <BoardCanvas width={canvasSize.width} height={canvasSize.height} />
+              <BoardCanvas ref={canvasRef} width={canvasSize.width} height={canvasSize.height} />
               <BoardZoomControls />
-
-              {/* 저장 중 표시 */}
-              {isSaving && (
-                <div className="absolute top-2 right-2 px-2 py-1 bg-white/80 rounded text-xs text-gray-600 flex items-center gap-1">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  저장 중...
-                </div>
-              )}
             </>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">

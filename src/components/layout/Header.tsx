@@ -18,6 +18,7 @@ import {
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { useChatUnread } from '@/hooks/use-chat-unread';
+import { clearAllAppData } from '@/stores/project-context-store';
 
 interface HeaderProps {
   user: {
@@ -54,7 +55,13 @@ export function Header({ user, onMenuClick }: HeaderProps) {
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
+      // 먼저 로컬 데이터 클리어 (프로젝트 컨텍스트, localStorage 등)
+      clearAllAppData();
+
+      // 서버에 로그아웃 요청
       await fetch('/api/auth/logout', { method: 'POST' });
+
+      // 로그인 페이지로 리다이렉트
       router.push('/login');
       router.refresh();
     } catch {

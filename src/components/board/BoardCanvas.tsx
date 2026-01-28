@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useCallback, useState } from 'react';
+import React, { useEffect, useRef, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
 import { Stage, Layer, Rect, Group } from 'react-konva';
 import type Konva from 'konva';
 import { useBoardStore, useSortedElements } from '@/stores/board-store';
@@ -17,10 +17,14 @@ interface BoardCanvasProps {
   height: number;
 }
 
+export interface BoardCanvasRef {
+  generateThumbnail: () => Promise<string | null>;
+}
+
 const GRID_SIZE = 20;
 const VIRTUAL_SIZE = 10000;
 
-export function BoardCanvas({ width, height }: BoardCanvasProps) {
+export const BoardCanvas = forwardRef<BoardCanvasRef, BoardCanvasProps>(function BoardCanvas({ width, height }, ref) {
   const stageRef = useRef<Konva.Stage>(null);
   const [isDrawingSelection, setIsDrawingSelection] = useState(false);
   const [selectionRect, setSelectionRect] = useState<{
@@ -50,6 +54,87 @@ export function BoardCanvas({ width, height }: BoardCanvasProps) {
   } = useBoardStore();
 
   const elements = useSortedElements();
+
+  // 썸네일 생성 메서드 노출
+  useImperativeHandle(ref, () => ({
+    generateThumbnail: async () => {
+      const stage = stageRef.current;
+      if (!stage || elements.length === 0) return null;
+
+      // 요소들의 경계 계산
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      elements.forEach(el => {
+        minX = Math.min(minX, el.position_x);
+        minY = Math.min(minY, el.position_y);
+        maxX = Math.max(maxX, el.position_x + el.width);
+        maxY = Math.max(maxY, el.position_y + el.height);
+      });
+
+      // 여백 추가
+      const padding = 20;
+      minX -= padding;
+      minY -= padding;
+      maxX += padding;
+      maxY += padding;
+
+      const contentWidth = maxX - minX;
+      const contentHeight = maxY - minY;
+
+      // 썸네일 크기 (16:9 비율, 최대 400px)
+      const thumbnailWidth = 400;
+      const thumbnailHeight = 225;
+      const scale = Math.min(thumbnailWidth / contentWidth, thumbnailHeight / contentHeight, 1);
+
+      // 현재 상태 저장
+      const prevScale = stage.scaleX();
+      const prevX = stage.x();
+      const prevY = stage.y();
+
+      // 썸네일 생성을 위한 변환
+      stage.scale({ x: scale, y: scale });
+      stage.position({
+        x: -minX * scale + (thumbnailWidth - contentWidth * scale) / 2,
+        y: -minY * scale + (thumbnailHeight - contentHeight * scale) / 2,
+      });
+
+      // Stage 이미지를 캔버스로 가져오기
+      const stageDataUrl = stage.toDataURL({
+        width: thumbnailWidth,
+        height: thumbnailHeight,
+        pixelRatio: 1,
+      });
+
+      // 원래 상태 복원 (이미지 로드 전에 복원해도 됨)
+      stage.scale({ x: prevScale, y: prevScale });
+      stage.position({ x: prevX, y: prevY });
+
+      // 흰색 배경 위에 Stage 이미지 합성
+      const canvas = document.createElement('canvas');
+      canvas.width = thumbnailWidth;
+      canvas.height = thumbnailHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+
+      // 흰색 배경 그리기
+      ctx.fillStyle = '#f3f4f6';
+      ctx.fillRect(0, 0, thumbnailWidth, thumbnailHeight);
+
+      // Stage 이미지 로드 대기 후 합성
+      return new Promise<string | null>((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+          resolve(dataUrl);
+        };
+        img.onerror = () => {
+          console.error('[BoardCanvas] 썸네일 이미지 로드 실패');
+          resolve(null);
+        };
+        img.src = stageDataUrl;
+      });
+    },
+  }), [elements]);
 
   // 디버깅: 요소 상태 확인
   useEffect(() => {
@@ -348,7 +433,7 @@ export function BoardCanvas({ width, height }: BoardCanvasProps) {
               type: 'text' as const,
               width: 200,
               height: 50,
-              content: { text: '텍스트를 입력하세요' },
+              content: { text: '' },
               style: {
                 font_size: 16,
                 text_color: '#1f2937',
@@ -487,4 +572,4 @@ export function BoardCanvas({ width, height }: BoardCanvasProps) {
       </Layer>
     </Stage>
   );
-}
+});

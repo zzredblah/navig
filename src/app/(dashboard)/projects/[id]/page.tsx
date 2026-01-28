@@ -34,6 +34,7 @@ interface ProjectMember {
   user_id: string;
   role: MemberRole;
   invited_at: string;
+  joined_at: string | null;
   profiles: {
     id: string;
     name: string;
@@ -305,6 +306,11 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge variant="outline">{roleLabels[member.role]}</Badge>
+                    {!member.joined_at && (
+                      <Badge variant="secondary" className="text-xs bg-orange-50 text-orange-600">
+                        초대 대기
+                      </Badge>
+                    )}
                     {canManageMembers && member.role !== 'owner' && (
                       <Button
                         variant="ghost"
