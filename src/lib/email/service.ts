@@ -23,6 +23,7 @@ const EMAIL_SETTINGS_MAP: Record<NotificationType, keyof EmailSettings | null> =
   feedback_status: 'email_new_feedback',
   feedback_reply: 'email_new_feedback',
   new_version: 'email_version_upload',
+  video_approved: 'email_version_upload', // 영상 승인도 영상 알림 설정 사용
   document_status: 'email_document_status',
   project_invite: 'email_new_feedback', // 기본 활성화
   deadline_reminder: 'email_deadline_reminder',

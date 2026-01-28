@@ -11,6 +11,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { formatTimestamp } from '@/types/feedback';
+import { FeedbackTemplate } from '@/types/feedback-template';
+import { FeedbackTemplateSelect } from './FeedbackTemplateSelect';
+import { FeedbackTemplateManager } from './FeedbackTemplateManager';
 
 interface FeedbackFormProps {
   videoId: string;
@@ -34,6 +37,23 @@ export function FeedbackForm({
   const [content, setContent] = useState('');
   const [isUrgent, setIsUrgent] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isTemplateManagerOpen, setIsTemplateManagerOpen] = useState(false);
+  const [templateRefreshTrigger, setTemplateRefreshTrigger] = useState(0);
+
+  // 템플릿 매니저가 닫힐 때 템플릿 목록 갱신
+  const handleTemplateManagerClose = (open: boolean) => {
+    setIsTemplateManagerOpen(open);
+    if (!open) {
+      // 매니저가 닫히면 템플릿 목록 갱신
+      setTemplateRefreshTrigger((prev) => prev + 1);
+    }
+  };
+
+  // 템플릿 선택 핸들러
+  const handleTemplateSelect = (template: FeedbackTemplate) => {
+    setContent(template.content);
+    setIsUrgent(template.is_urgent);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,6 +72,7 @@ export function FeedbackForm({
   };
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -59,21 +80,28 @@ export function FeedbackForm({
           <span>현재 위치: {formatTimestamp(currentTime)}</span>
         </div>
 
-        {onDrawingModeToggle && (
-          <Button
-            type="button"
-            variant={disabled ? 'default' : 'outline'}
-            size="sm"
-            onClick={onDrawingModeToggle}
-            className={disabled
-              ? 'bg-primary-600 hover:bg-primary-700 text-white'
-              : 'text-primary-600 border-primary-200 hover:bg-primary-50'
-            }
-          >
-            <Pencil className="h-4 w-4 mr-1" />
-            {disabled ? '그리기 중...' : '그리기'}
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <FeedbackTemplateSelect
+            onSelect={handleTemplateSelect}
+            onManageClick={() => setIsTemplateManagerOpen(true)}
+            refreshTrigger={templateRefreshTrigger}
+          />
+          {onDrawingModeToggle && (
+            <Button
+              type="button"
+              variant={disabled ? 'default' : 'outline'}
+              size="sm"
+              onClick={onDrawingModeToggle}
+              className={disabled
+                ? 'bg-primary-600 hover:bg-primary-700 text-white'
+                : 'text-primary-600 border-primary-200 hover:bg-primary-50'
+              }
+            >
+              <Pencil className="h-4 w-4 mr-1" />
+              {disabled ? '그리기 중...' : '그리기'}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* 첨부된 그림 미리보기 */}
@@ -145,5 +173,12 @@ export function FeedbackForm({
         </div>
       </div>
     </form>
+
+    {/* 템플릿 관리 모달 */}
+    <FeedbackTemplateManager
+      open={isTemplateManagerOpen}
+      onOpenChange={handleTemplateManagerClose}
+    />
+    </>
   );
 }

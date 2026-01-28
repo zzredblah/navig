@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { ProjectStatusChart, DocumentStatusChart } from '@/components/dashboard/DashboardCharts';
 import { StatCards } from '@/components/dashboard/StatCards';
 import { UrgentSection } from '@/components/dashboard/UrgentSection';
@@ -8,8 +8,8 @@ import { RecentProjects } from '@/components/dashboard/RecentProjects';
 import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton';
 
 async function DashboardContent() {
+  // 인증 확인은 일반 클라이언트 사용
   const supabase = await createClient();
-
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
@@ -20,20 +20,23 @@ async function DashboardContent() {
     );
   }
 
+  // 데이터 조회는 Admin 클라이언트 사용 (RLS 우회하여 모든 참여 프로젝트 조회)
+  const adminClient = createAdminClient();
+
   // 프로필 정보 가져오기
-  const { data: profile } = await supabase
+  const { data: profile } = await adminClient
     .from('profiles')
     .select('*')
     .eq('id', user.id)
     .single();
 
   // 1. 프로젝트 현황 요약 (직접 조회)
-  const { data: ownedProjects } = await supabase
+  const { data: ownedProjects } = await adminClient
     .from('projects')
     .select('id, status')
     .eq('client_id', user.id);
 
-  const { data: memberProjects } = await supabase
+  const { data: memberProjects } = await adminClient
     .from('project_members')
     .select('project_id')
     .eq('user_id', user.id);
@@ -45,7 +48,7 @@ async function DashboardContent() {
   // 멤버 프로젝트의 상태 조회
   let memberProjectStatuses: { status: string }[] = [];
   if (memberIds.length > 0) {
-    const { data } = await supabase
+    const { data } = await adminClient
       .from('projects')
       .select('status')
       .in('id', memberIds);
@@ -74,7 +77,7 @@ async function DashboardContent() {
     const oneDayAgo = new Date();
     oneDayAgo.setDate(oneDayAgo.getDate() - 1);
 
-    const { data: feedbacks } = await supabase
+    const { data: feedbacks } = await adminClient
       .from('video_feedbacks')
       .select(`
         id,
@@ -102,7 +105,7 @@ async function DashboardContent() {
 
     // 기한 초과 프로젝트
     const today = new Date().toISOString().split('T')[0];
-    const { data: overdueProjects } = await supabase
+    const { data: overdueProjects } = await adminClient
       .from('projects')
       .select('id, title, deadline')
       .in('id', allProjectIds)
@@ -141,8 +144,8 @@ async function DashboardContent() {
     const activities: any[] = [];
     const limit = 10;
 
-    // 피드백 활동
-    const { data: feedbacks } = await supabase
+    // 피드백 활동 (내가 작성한 것만)
+    const { data: feedbacks } = await adminClient
       .from('video_feedbacks')
       .select(`
         id,
@@ -155,6 +158,7 @@ async function DashboardContent() {
         profiles!video_feedbacks_created_by_fkey(id, name, avatar_url)
       `)
       .in('project_id', allProjectIds)
+      .eq('created_by', user.id)
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -174,8 +178,8 @@ async function DashboardContent() {
       });
     }
 
-    // 영상 버전 활동
-    const { data: versions } = await supabase
+    // 영상 버전 활동 (내가 업로드한 것만)
+    const { data: versions } = await adminClient
       .from('video_versions')
       .select(`
         id,
@@ -188,6 +192,7 @@ async function DashboardContent() {
         profiles!video_versions_uploaded_by_fkey(id, name, avatar_url)
       `)
       .in('project_id', allProjectIds)
+      .eq('uploaded_by', user.id)
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -207,8 +212,8 @@ async function DashboardContent() {
       });
     }
 
-    // 문서 활동
-    const { data: documents } = await supabase
+    // 문서 활동 (내가 작성한 것만)
+    const { data: documents } = await adminClient
       .from('documents')
       .select(`
         id,
@@ -220,6 +225,7 @@ async function DashboardContent() {
         profiles!documents_created_by_fkey(id, name, avatar_url)
       `)
       .in('project_id', allProjectIds)
+      .eq('created_by', user.id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -240,8 +246,8 @@ async function DashboardContent() {
       });
     }
 
-    // 프로젝트 활동
-    const { data: projectActivities } = await supabase
+    // 프로젝트 활동 (내가 생성한 것만)
+    const { data: projectActivities } = await adminClient
       .from('projects')
       .select(`
         id,
@@ -251,6 +257,7 @@ async function DashboardContent() {
         profiles!projects_client_id_fkey(id, name, avatar_url)
       `)
       .in('id', allProjectIds)
+      .eq('client_id', user.id)
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -288,42 +295,63 @@ async function DashboardContent() {
     description: string | null;
     memberCount: number;
     documentCount: number;
+    userRole: string;
   }> = [];
 
   let allProjects: Array<{ status: string }> = [];
 
   if (allProjectIds.length > 0) {
-    const { data } = await supabase
+    const { data } = await adminClient
       .from('projects')
-      .select('id, title, status, created_at, updated_at, description')
+      .select('id, title, status, created_at, updated_at, description, client_id')
       .in('id', allProjectIds)
       .order('updated_at', { ascending: false })
       .limit(10);
 
     const projectsWithDetails = await Promise.all(
       (data || []).map(async (project) => {
-        const { count: memberCount } = await supabase
+        const { count: memberCount } = await adminClient
           .from('project_members')
           .select('*', { count: 'exact', head: true })
           .eq('project_id', project.id);
 
-        const { count: documentCount } = await supabase
+        const { count: documentCount } = await adminClient
           .from('documents')
           .select('*', { count: 'exact', head: true })
           .eq('project_id', project.id)
           .is('deleted_at', null);
 
+        // 사용자의 역할 조회
+        const { data: memberData } = await adminClient
+          .from('project_members')
+          .select('role')
+          .eq('project_id', project.id)
+          .eq('user_id', user.id)
+          .single();
+
+        // 역할 결정: project_members에 있으면 해당 역할, 없으면 client_id 확인
+        let userRole = memberData?.role || 'viewer';
+        if (project.client_id === user.id && !memberData) {
+          userRole = 'owner';
+        }
+
         return {
-          ...project,
+          id: project.id,
+          title: project.title,
+          status: project.status,
+          created_at: project.created_at,
+          updated_at: project.updated_at,
+          description: project.description,
           memberCount: memberCount || 0,
           documentCount: documentCount || 0,
+          userRole,
         };
       })
     );
 
     recentProjects = projectsWithDetails;
 
-    const { data: allData } = await supabase
+    const { data: allData } = await adminClient
       .from('projects')
       .select('status')
       .in('id', allProjectIds);
@@ -334,7 +362,7 @@ async function DashboardContent() {
   // 협업 멤버 수
   let totalMembers = 0;
   if (allProjectIds.length > 0) {
-    const { data: members } = await supabase
+    const { data: members } = await adminClient
       .from('project_members')
       .select('user_id')
       .in('project_id', allProjectIds)
@@ -362,7 +390,7 @@ async function DashboardContent() {
   ];
 
   if (allProjectIds.length > 0) {
-    const { data: docs } = await supabase
+    const { data: docs } = await adminClient
       .from('documents')
       .select('status')
       .in('project_id', allProjectIds)

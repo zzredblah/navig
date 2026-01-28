@@ -15,6 +15,7 @@ interface Project {
   description: string | null;
   memberCount: number;
   documentCount: number;
+  userRole: string;
 }
 
 interface RecentProjectsProps {
@@ -26,6 +27,13 @@ const statusLabels: Record<string, { label: string; variant: 'default' | 'second
   production: { label: '제작', variant: 'default' },
   review: { label: '검수', variant: 'outline' },
   completed: { label: '완료', variant: 'secondary' },
+};
+
+const roleLabels: Record<string, { label: string; className: string }> = {
+  owner: { label: '소유자', className: 'text-primary-600 bg-primary-50' },
+  approver: { label: '승인자', className: 'text-green-600 bg-green-50' },
+  editor: { label: '편집자', className: 'text-blue-600 bg-blue-50' },
+  viewer: { label: '뷰어', className: 'text-gray-600 bg-gray-100' },
 };
 
 const ITEMS_PER_PAGE = 5;
@@ -104,38 +112,46 @@ export function RecentProjects({ projects }: RecentProjectsProps) {
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="px-3 pb-3 space-y-2">
-            {displayedProjects.map((project) => (
-              <Link
-                key={project.id}
-                href={`/projects/${project.id}`}
-                className="block p-4 rounded-lg border border-gray-100 hover:border-primary-200 hover:bg-primary-50/30 transition-all"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-gray-900 truncate pr-3">
-                    {project.title}
-                  </p>
-                  <Badge
-                    variant={statusLabels[project.status]?.variant || 'default'}
-                    className="text-xs shrink-0"
-                  >
-                    {statusLabels[project.status]?.label || project.status}
-                  </Badge>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <Users className="h-3.5 w-3.5" />
-                    멤버 {project.memberCount}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <FileText className="h-3.5 w-3.5" />
-                    문서 {project.documentCount}
-                  </span>
-                  <span className="hidden sm:inline text-gray-400">
-                    수정 {new Date(project.updated_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
-                  </span>
-                </div>
-              </Link>
-            ))}
+            {displayedProjects.map((project) => {
+              const roleConfig = roleLabels[project.userRole] || roleLabels.viewer;
+              return (
+                <Link
+                  key={project.id}
+                  href={`/projects/${project.id}`}
+                  className="block p-4 rounded-lg border border-gray-100 hover:border-primary-200 hover:bg-primary-50/30 transition-all"
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 min-w-0 pr-3">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {project.title}
+                      </p>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${roleConfig.className}`}>
+                        {roleConfig.label}
+                      </span>
+                    </div>
+                    <Badge
+                      variant={statusLabels[project.status]?.variant || 'default'}
+                      className="text-xs shrink-0"
+                    >
+                      {statusLabels[project.status]?.label || project.status}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <Users className="h-3.5 w-3.5" />
+                      멤버 {project.memberCount}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <FileText className="h-3.5 w-3.5" />
+                      문서 {project.documentCount}
+                    </span>
+                    <span className="hidden sm:inline text-gray-400">
+                      수정 {new Date(project.updated_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                </Link>
+              );
+            })}
             {projects.length > ITEMS_PER_PAGE && (
               <div className="flex justify-center gap-3 pt-2">
                 {showCount < projects.length && (

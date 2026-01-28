@@ -22,6 +22,9 @@ export interface VideoVersion {
   status: VideoStatus;
   uploaded_by: string;
   created_at: string;
+  // 승인 관련 필드
+  approved_at: string | null;
+  approved_by: string | null;
 }
 
 // 영상 버전 with 업로더 정보

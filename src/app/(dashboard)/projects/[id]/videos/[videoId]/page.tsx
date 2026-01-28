@@ -6,7 +6,7 @@
  * 영상 재생과 프레임 단위 피드백을 함께 제공합니다.
  */
 
-import { useState, useEffect, useRef, use } from 'react';
+import { useState, useEffect, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -17,12 +17,16 @@ import {
   Info,
   MessageSquare,
   X,
+  GitCompare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { FeedbackPanel } from '@/components/video/FeedbackPanel';
 import { DrawingCanvas } from '@/components/video/DrawingCanvas';
+import { ApprovalButton } from '@/components/video/ApprovalButton';
+import { VideoCompareModal } from '@/components/video/VideoCompareModal';
 import { cn } from '@/lib/utils';
+import { useVideoHotkeys } from '@/hooks/use-global-hotkeys';
 
 interface VideoVersion {
   id: string;
@@ -38,6 +42,8 @@ interface VideoVersion {
   change_notes: string;
   status: 'uploading' | 'processing' | 'ready' | 'error';
   created_at: string;
+  approved_at: string | null;
+  approved_by: string | null;
   uploader: {
     id: string;
     name: string;
@@ -87,6 +93,7 @@ export default function VideoReviewPage({
   // 상태
   const [video, setVideo] = useState<VideoVersion | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>();
+  const [currentUserRole, setCurrentUserRole] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -94,6 +101,7 @@ export default function VideoReviewPage({
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [drawingImage, setDrawingImage] = useState<string | null>(null);
   const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
+  const [showCompareModal, setShowCompareModal] = useState(false);
   const videoContainerRef = useRef<HTMLDivElement>(null);
 
   // 영상 정보 조회
@@ -105,6 +113,7 @@ export default function VideoReviewPage({
         if (response.ok) {
           const data = await response.json();
           setVideo(data.video);
+          setCurrentUserRole(data.userRole);
         } else if (response.status === 404) {
           router.push(`/projects/${resolvedParams.id}/videos`);
         }
@@ -183,6 +192,48 @@ export default function VideoReviewPage({
     setDrawingImage(null);
   };
 
+  // 영상 키보드 단축키 핸들러
+  const handlePlayPause = useCallback(() => {
+    if (videoRef.current) {
+      if (videoRef.current.paused) {
+        videoRef.current.play();
+      } else {
+        videoRef.current.pause();
+      }
+    }
+  }, []);
+
+  const handleSeekForward = useCallback(() => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = Math.min(
+        videoRef.current.currentTime + 5,
+        videoRef.current.duration
+      );
+    }
+  }, []);
+
+  const handleSeekBackward = useCallback(() => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = Math.max(
+        videoRef.current.currentTime - 5,
+        0
+      );
+    }
+  }, []);
+
+  const handleToggleFeedbackPanel = useCallback(() => {
+    setShowFeedbackPanel((prev) => !prev);
+  }, []);
+
+  // 영상 키보드 단축키 활성화
+  useVideoHotkeys({
+    onPlayPause: handlePlayPause,
+    onSeekForward: handleSeekForward,
+    onSeekBackward: handleSeekBackward,
+    onToggleFeedbackPanel: handleToggleFeedbackPanel,
+    enabled: !isDrawingMode && !!video?.file_url,
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
@@ -222,6 +273,35 @@ export default function VideoReviewPage({
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {/* 승인 버튼 */}
+          <ApprovalButton
+            videoId={video.id}
+            projectClientId={video.project.client_id}
+            currentUserId={currentUserId}
+            currentUserRole={currentUserRole}
+            isApproved={!!video.approved_at}
+            approvedAt={video.approved_at}
+            onApprovalChange={(approved) => {
+              setVideo((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      approved_at: approved ? new Date().toISOString() : null,
+                      approved_by: approved ? currentUserId || null : null,
+                    }
+                  : null
+              );
+            }}
+          />
+          {/* 버전 비교 */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowCompareModal(true)}
+          >
+            <GitCompare className="h-4 w-4 mr-2" />
+            버전 비교
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -338,6 +418,14 @@ export default function VideoReviewPage({
           </Button>
         </div>
       )}
+
+      {/* 버전 비교 모달 */}
+      <VideoCompareModal
+        isOpen={showCompareModal}
+        onClose={() => setShowCompareModal(false)}
+        projectId={resolvedParams.id}
+        currentVideoId={video.id}
+      />
     </div>
   );
 }

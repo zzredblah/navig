@@ -61,24 +61,27 @@ export async function GET(
       );
     }
 
-    // 프로젝트 멤버 확인
+    // 프로젝트 멤버 확인 (역할 포함)
     const { data: member } = await adminClient
       .from('project_members')
-      .select('id')
+      .select('id, role')
       .eq('project_id', video.project_id)
       .eq('user_id', user.id)
       .single();
 
-    const isOwner = (video.project as { client_id: string })?.client_id === user.id;
+    const isClientOwner = (video.project as { client_id: string })?.client_id === user.id;
 
-    if (!member && !isOwner) {
+    if (!member && !isClientOwner) {
       return NextResponse.json(
         { error: '이 영상에 접근 권한이 없습니다' },
         { status: 403 }
       );
     }
 
-    return NextResponse.json({ video });
+    // 사용자 역할 결정
+    const userRole = member?.role || (isClientOwner ? 'owner' : 'viewer');
+
+    return NextResponse.json({ video, userRole });
   } catch (error) {
     console.error('[Video GET] 예외:', error);
     return NextResponse.json(

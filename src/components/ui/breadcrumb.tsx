@@ -21,6 +21,7 @@ const pathLabels: Record<string, string> = {
   videos: '영상',
   feedbacks: '피드백',
   compare: '버전 비교',
+  boards: '레퍼런스 보드',
 };
 
 export interface BreadcrumbItem {

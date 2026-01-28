@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { updateProjectSchema } from '@/lib/validations/project';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -22,23 +22,37 @@ export async function GET(
       );
     }
 
-    // 프로젝트 멤버인지 확인
-    const { data: member } = await supabase
+    // Admin 클라이언트 사용 (RLS 우회)
+    const adminClient = createAdminClient();
+
+    // 프로젝트 멤버인지 확인 (멤버 또는 클라이언트)
+    const { data: member } = await adminClient
       .from('project_members')
       .select('role')
       .eq('project_id', id)
       .eq('user_id', user.id)
       .single();
 
+    // 멤버가 아니면 프로젝트 소유자인지 확인
     if (!member) {
-      return NextResponse.json(
-        { error: '프로젝트에 접근 권한이 없습니다' },
-        { status: 403 }
-      );
+      const { data: project } = await adminClient
+        .from('projects')
+        .select('client_id')
+        .eq('id', id)
+        .single();
+
+      if (!project || project.client_id !== user.id) {
+        return NextResponse.json(
+          { error: '프로젝트에 접근 권한이 없습니다' },
+          { status: 403 }
+        );
+      }
     }
 
+    const userRole = member?.role || 'owner';
+
     // 프로젝트 상세 조회
-    const { data: project, error: queryError } = await supabase
+    const { data: project, error: queryError } = await adminClient
       .from('projects')
       .select(`
         *,
@@ -61,7 +75,7 @@ export async function GET(
     }
 
     return NextResponse.json({
-      data: { project, userRole: member.role },
+      data: { project, userRole },
     });
   } catch {
     return NextResponse.json(
@@ -89,8 +103,10 @@ export async function PATCH(
       );
     }
 
+    const adminClient = createAdminClient();
+
     // 프로젝트 수정 권한 확인 (owner 또는 editor만)
-    const { data: member } = await supabase
+    const { data: member } = await adminClient
       .from('project_members')
       .select('role')
       .eq('project_id', id)
@@ -107,7 +123,7 @@ export async function PATCH(
     const body = await request.json();
     const validatedData = updateProjectSchema.parse(body);
 
-    const { data: project, error: updateError } = await supabase
+    const { data: project, error: updateError } = await adminClient
       .from('projects')
       .update(validatedData)
       .eq('id', id)
@@ -157,8 +173,10 @@ export async function DELETE(
       );
     }
 
+    const adminClient = createAdminClient();
+
     // 프로젝트 삭제 권한 확인 (owner만)
-    const { data: member } = await supabase
+    const { data: member } = await adminClient
       .from('project_members')
       .select('role')
       .eq('project_id', id)
@@ -172,7 +190,7 @@ export async function DELETE(
       );
     }
 
-    const { error: deleteError } = await supabase
+    const { error: deleteError } = await adminClient
       .from('projects')
       .delete()
       .eq('id', id);

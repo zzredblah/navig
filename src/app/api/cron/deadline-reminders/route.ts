@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
 
       // 알림 제목/내용 생성
       let title: string;
-      let type: 'deadline_reminder' = 'deadline_reminder';
+      const type = 'deadline_reminder' as const;
 
       if (daysRemaining === 0) {
         title = `🔥 프로젝트 "${project.title}" 오늘 마감!`;

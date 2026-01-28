@@ -9,6 +9,7 @@ export type NotificationType =
   | 'feedback_status' // 피드백 상태 변경
   | 'feedback_reply' // 피드백 답글
   | 'new_version' // 새 영상 버전 업로드
+  | 'video_approved' // 영상 승인
   | 'document_status' // 문서 상태 변경
   | 'project_invite' // 프로젝트 초대
   | 'deadline_reminder' // 마감 알림

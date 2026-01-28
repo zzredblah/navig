@@ -19,7 +19,7 @@ export type UserRole = 'client' | 'worker' | 'admin';
 
 export type ProjectStatus = 'planning' | 'production' | 'review' | 'completed';
 
-export type MemberRole = 'owner' | 'editor' | 'viewer';
+export type MemberRole = 'owner' | 'approver' | 'editor' | 'viewer';
 
 export type DocumentType = 'request' | 'estimate' | 'contract';
 
@@ -37,6 +37,7 @@ export type NotificationType =
   | 'feedback_status'
   | 'feedback_reply'
   | 'new_version'
+  | 'video_approved'
   | 'document_status'
   | 'project_invite'
   | 'deadline_reminder'
@@ -75,6 +76,7 @@ export interface Database {
           phone: string | null;
           company: string | null;
           sidebar_config: SidebarConfig | null;
+          feedback_templates: Json | null;
           created_at: string;
           updated_at: string;
         };
@@ -87,6 +89,7 @@ export interface Database {
           phone?: string | null;
           company?: string | null;
           sidebar_config?: SidebarConfig | null;
+          feedback_templates?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -99,6 +102,7 @@ export interface Database {
           phone?: string | null;
           company?: string | null;
           sidebar_config?: SidebarConfig | null;
+          feedback_templates?: Json | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -386,6 +390,8 @@ export interface Database {
           status: VideoStatus;
           upload_id: string | null;
           uploaded_by: string;
+          approved_at: string | null;
+          approved_by: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -407,6 +413,8 @@ export interface Database {
           status?: VideoStatus;
           upload_id?: string | null;
           uploaded_by: string;
+          approved_at?: string | null;
+          approved_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -428,6 +436,8 @@ export interface Database {
           status?: VideoStatus;
           upload_id?: string | null;
           uploaded_by?: string;
+          approved_at?: string | null;
+          approved_by?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -455,6 +465,8 @@ export interface Database {
           timestamp_seconds: number;
           position_x: number | null;
           position_y: number | null;
+          drawing_image: string | null;
+          is_urgent: boolean;
           status: FeedbackStatus;
           resolved_at: string | null;
           resolved_by: string | null;
@@ -470,6 +482,8 @@ export interface Database {
           timestamp_seconds: number;
           position_x?: number | null;
           position_y?: number | null;
+          drawing_image?: string | null;
+          is_urgent?: boolean;
           status?: FeedbackStatus;
           resolved_at?: string | null;
           resolved_by?: string | null;
@@ -485,6 +499,8 @@ export interface Database {
           timestamp_seconds?: number;
           position_x?: number | null;
           position_y?: number | null;
+          drawing_image?: string | null;
+          is_urgent?: boolean;
           status?: FeedbackStatus;
           resolved_at?: string | null;
           resolved_by?: string | null;
@@ -642,6 +658,186 @@ export interface Database {
           }
         ];
       };
+      boards: {
+        Row: {
+          id: string;
+          project_id: string;
+          title: string;
+          description: string | null;
+          thumbnail_url: string | null;
+          is_public: boolean;
+          share_token: string | null;
+          background_color: string;
+          grid_enabled: boolean;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          title?: string;
+          description?: string | null;
+          thumbnail_url?: string | null;
+          is_public?: boolean;
+          share_token?: string | null;
+          background_color?: string;
+          grid_enabled?: boolean;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          title?: string;
+          description?: string | null;
+          thumbnail_url?: string | null;
+          is_public?: boolean;
+          share_token?: string | null;
+          background_color?: string;
+          grid_enabled?: boolean;
+          created_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'boards_project_id_fkey';
+            columns: ['project_id'];
+            referencedRelation: 'projects';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'boards_created_by_fkey';
+            columns: ['created_by'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      board_elements: {
+        Row: {
+          id: string;
+          board_id: string;
+          type: string;
+          position_x: number;
+          position_y: number;
+          width: number;
+          height: number;
+          rotation: number;
+          z_index: number;
+          locked: boolean;
+          content: Record<string, unknown>;
+          style: Record<string, unknown>;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          board_id: string;
+          type: string;
+          position_x?: number;
+          position_y?: number;
+          width?: number;
+          height?: number;
+          rotation?: number;
+          z_index?: number;
+          locked?: boolean;
+          content?: Record<string, unknown>;
+          style?: Record<string, unknown>;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          board_id?: string;
+          type?: string;
+          position_x?: number;
+          position_y?: number;
+          width?: number;
+          height?: number;
+          rotation?: number;
+          z_index?: number;
+          locked?: boolean;
+          content?: Record<string, unknown>;
+          style?: Record<string, unknown>;
+          created_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'board_elements_board_id_fkey';
+            columns: ['board_id'];
+            referencedRelation: 'boards';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'board_elements_created_by_fkey';
+            columns: ['created_by'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      video_change_markers: {
+        Row: {
+          id: string;
+          version_id: string;
+          compared_version_id: string | null;
+          type: 'visual' | 'audio' | 'text' | 'effect' | 'other';
+          start_time: number;
+          end_time: number;
+          description: string | null;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          version_id: string;
+          compared_version_id?: string | null;
+          type: 'visual' | 'audio' | 'text' | 'effect' | 'other';
+          start_time: number;
+          end_time: number;
+          description?: string | null;
+          created_by: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          version_id?: string;
+          compared_version_id?: string | null;
+          type?: 'visual' | 'audio' | 'text' | 'effect' | 'other';
+          start_time?: number;
+          end_time?: number;
+          description?: string | null;
+          created_by?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'video_change_markers_version_id_fkey';
+            columns: ['version_id'];
+            referencedRelation: 'video_versions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'video_change_markers_compared_version_id_fkey';
+            columns: ['compared_version_id'];
+            referencedRelation: 'video_versions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'video_change_markers_created_by_fkey';
+            columns: ['created_by'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -713,6 +909,8 @@ export type VideoFeedback = Tables<'video_feedbacks'>;
 export type FeedbackReply = Tables<'feedback_replies'>;
 export type Notification = Tables<'notifications'>;
 export type NotificationSettings = Tables<'notification_settings'>;
+export type Board = Tables<'boards'>;
+export type BoardElement = Tables<'board_elements'>;
 
 // 확장 타입 (조인된 데이터)
 export type ProjectWithClient = Project & {

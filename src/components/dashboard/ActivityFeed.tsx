@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -51,21 +51,34 @@ const activityConfig = {
 const ITEMS_PER_PAGE = 3;
 
 export function ActivityFeed({ activities }: ActivityFeedProps) {
+  const [mounted, setMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [showCount, setShowCount] = useState(ITEMS_PER_PAGE);
 
-  if (activities.length === 0) {
+  const hasActivities = activities.length > 0;
+
+  // 클라이언트 마운트 후에만 Collapsible 렌더링 (Radix UI hydration 에러 방지)
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // SSR에서는 기본 레이아웃만 렌더링
+  if (!mounted) {
     return (
       <div className="bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 flex items-center gap-2 border-b border-gray-100">
-          <div className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center">
-            <Activity className="h-3.5 w-3.5 text-gray-400" />
+        <div className="w-full px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center">
+              <Activity className={`h-3.5 w-3.5 ${hasActivities ? 'text-gray-500' : 'text-gray-400'}`} />
+            </div>
+            <span className="text-sm font-medium text-gray-900">최근 활동</span>
+            {hasActivities && (
+              <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                {activities.length}
+              </span>
+            )}
           </div>
-          <span className="text-sm font-medium text-gray-900">최근 활동</span>
-        </div>
-        <div className="flex flex-col items-center justify-center py-8">
-          <Activity className="h-8 w-8 text-gray-200 mb-2" />
-          <p className="text-xs text-gray-400">아직 활동 내역이 없습니다</p>
+          <ChevronDown className="h-4 w-4 text-gray-400" />
         </div>
       </div>
     );
@@ -90,12 +103,14 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
           <button className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-md bg-gray-100 flex items-center justify-center">
-                <Activity className="h-3.5 w-3.5 text-gray-500" />
+                <Activity className={`h-3.5 w-3.5 ${hasActivities ? 'text-gray-500' : 'text-gray-400'}`} />
               </div>
               <span className="text-sm font-medium text-gray-900">최근 활동</span>
-              <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-                {activities.length}
-              </span>
+              {hasActivities && (
+                <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                  {activities.length}
+                </span>
+              )}
             </div>
             {isOpen ? (
               <ChevronUp className="h-4 w-4 text-gray-400" />
@@ -105,6 +120,12 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
           </button>
         </CollapsibleTrigger>
         <CollapsibleContent>
+          {!hasActivities ? (
+            <div className="flex flex-col items-center justify-center py-8">
+              <Activity className="h-8 w-8 text-gray-200 mb-2" />
+              <p className="text-xs text-gray-400">아직 활동 내역이 없습니다</p>
+            </div>
+          ) : (
           <div className="px-3 pb-3 space-y-1">
             {displayedActivities.map((activity, index) => {
               const config = activityConfig[activity.type];
@@ -176,6 +197,7 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
               </div>
             )}
           </div>
+          )}
         </CollapsibleContent>
       </div>
     </Collapsible>

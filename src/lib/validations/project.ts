@@ -13,11 +13,11 @@ export const updateProjectSchema = z.object({
 
 export const addMemberSchema = z.object({
   email: z.string().email('유효한 이메일을 입력해주세요'),
-  role: z.enum(['owner', 'editor', 'viewer']).default('viewer'),
+  role: z.enum(['owner', 'approver', 'editor', 'viewer']).default('viewer'),
 });
 
 export const updateMemberSchema = z.object({
-  role: z.enum(['owner', 'editor', 'viewer']),
+  role: z.enum(['owner', 'approver', 'editor', 'viewer']),
 });
 
 export const projectQuerySchema = z.object({

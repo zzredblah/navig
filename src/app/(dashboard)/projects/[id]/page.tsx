@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Settings, UserPlus, Users, Trash2, Pencil, FileText, Video } from 'lucide-react';
+import { ArrowLeft, Settings, UserPlus, Users, Trash2, Pencil, FileText, Video, LayoutGrid } from 'lucide-react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { InviteMemberModal } from '@/components/project/InviteMemberModal';
 import { EditProjectModal } from '@/components/project/EditProjectModal';
+import { ProjectShareDropdown } from '@/components/project/ProjectShareDropdown';
+import { ProjectFeedbackStats } from '@/components/project/ProjectFeedbackStats';
 import type { Project, MemberRole } from '@/types/database';
 
 const statusLabels: Record<string, { label: string; variant: 'default' | 'secondary' | 'outline' | 'destructive' }> = {
@@ -22,6 +24,7 @@ const statusLabels: Record<string, { label: string; variant: 'default' | 'second
 
 const roleLabels: Record<MemberRole, string> = {
   owner: '소유자',
+  approver: '승인자',
   editor: '편집자',
   viewer: '뷰어',
 };
@@ -172,26 +175,33 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             )}
           </div>
 
-          {canEdit && (
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setIsEditModalOpen(true)}>
-                <Pencil className="h-4 w-4 mr-1" />
-                수정
-              </Button>
-              {canDelete && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="text-error-600 hover:text-error-700"
-                  onClick={handleDelete}
-                  disabled={isDeleting}
-                >
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  삭제
+          <div className="flex gap-2">
+            {/* 공유 드롭다운 */}
+            <ProjectShareDropdown
+              projectId={resolvedParams.id}
+              projectTitle={project.title}
+            />
+            {canEdit && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setIsEditModalOpen(true)}>
+                  <Pencil className="h-4 w-4 mr-1" />
+                  수정
                 </Button>
-              )}
-            </div>
-          )}
+                {canDelete && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-error-600 hover:text-error-700"
+                    onClick={handleDelete}
+                    disabled={isDeleting}
+                  >
+                    <Trash2 className="h-4 w-4 mr-1" />
+                    삭제
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -231,6 +241,27 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             </Button>
           </CardContent>
         </Card>
+
+        {/* 레퍼런스 보드 카드 */}
+        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push(`/projects/${resolvedParams.id}/boards`)}>
+          <CardContent className="flex items-center justify-between p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-green-100 text-green-600 flex items-center justify-center">
+                <LayoutGrid className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-gray-900">레퍼런스 보드</h3>
+                <p className="text-sm text-gray-500">레퍼런스 이미지와 아이디어를 정리합니다</p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm">
+              바로가기
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* 피드백 통계 */}
+        <ProjectFeedbackStats projectId={resolvedParams.id} />
 
         <Card>
           <CardHeader>
