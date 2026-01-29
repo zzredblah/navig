@@ -20,6 +20,7 @@ import {
   LogOut,
   Check,
 } from 'lucide-react';
+import { SidebarPlanBadge } from '@/components/subscription/SidebarPlanBadge';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -183,12 +184,15 @@ export function Sidebar({ isOpen, onClose, sidebarConfig }: SidebarProps) {
 
   // URL에서 프로젝트 ID 감지하여 자동 선택 (다른 프로젝트 진입 시)
   // 대시보드나 다른 페이지로 이동해도 프로젝트 유지 (명시적 나가기만 해제)
+  // 주의: selectedProject를 의존성에서 제외 - clearSelectedProject 시 재선택 방지
   useEffect(() => {
     const match = pathname.match(/\/projects\/([^/]+)/);
     if (match && match[1] && match[1] !== 'new') {
       const projectId = match[1];
+      // 현재 선택된 프로젝트를 직접 스토어에서 읽기 (의존성 배열에 포함하지 않기 위해)
+      const currentSelectedProject = useProjectContextStore.getState().selectedProject;
       // 다른 프로젝트 상세 페이지 진입 시 해당 프로젝트로 자동 전환
-      if (!selectedProject || selectedProject.id !== projectId) {
+      if (!currentSelectedProject || currentSelectedProject.id !== projectId) {
         // 최근 프로젝트 목록에서 찾기
         const found = recentProjects.find((p) => p.id === projectId);
         if (found) {
@@ -215,7 +219,7 @@ export function Sidebar({ isOpen, onClose, sidebarConfig }: SidebarProps) {
       }
     }
     // 프로젝트 자동 해제 로직 제거 - 명시적으로 "프로젝트 나가기"를 눌렀을 때만 해제
-  }, [pathname, recentProjects, selectedProject, setSelectedProject]);
+  }, [pathname, recentProjects, setSelectedProject]);
 
   const filteredMenuItems = menuItems.filter(
     (item) => ALWAYS_VISIBLE.includes(item.href) || !hiddenItems.includes(item.href)
@@ -258,7 +262,7 @@ export function Sidebar({ isOpen, onClose, sidebarConfig }: SidebarProps) {
         <div className="flex flex-col h-full">
           {/* Logo header */}
           <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 dark:border-gray-700">
-            <Link href="/dashboard" className="flex items-center gap-2">
+            <Link href="/dashboard" className="flex items-center gap-2 ml-12">
               <Image
                 src="/images/logo-light.png"
                 alt="NAVIG"
@@ -372,10 +376,10 @@ export function Sidebar({ isOpen, onClose, sidebarConfig }: SidebarProps) {
               }
 
               // Active 상태 결정
-              // 프로젝트 홈은 정확히 /projects/{id}일 때만 active (하위 경로 제외)
+              // 프로젝트 홈은 정확히 /projects/{id}이거나 /projects/{id}/settings일 때 active
               let isActive = false;
               if (isProjectHome) {
-                isActive = pathname === href;
+                isActive = pathname === href || pathname === `${href}/settings`;
               } else {
                 isActive = pathname === href || pathname.startsWith(`${href}/`);
               }
@@ -398,6 +402,11 @@ export function Sidebar({ isOpen, onClose, sidebarConfig }: SidebarProps) {
               );
             })}
           </nav>
+
+          {/* 구독 현황 */}
+          <div className="border-t border-gray-200">
+            <SidebarPlanBadge />
+          </div>
 
           {/* Bottom navigation */}
           <div className="p-4 border-t border-gray-200 space-y-1">

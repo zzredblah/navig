@@ -15,6 +15,7 @@ const pathLabels: Record<string, string> = {
   trash: '휴지통',
   profile: '프로필',
   settings: '설정',
+  subscription: '구독 관리',
   new: '새로 만들기',
   edit: '수정',
   members: '멤버',

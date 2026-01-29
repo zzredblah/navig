@@ -3,7 +3,7 @@
  */
 
 // 영상 상태
-export type VideoStatus = 'uploading' | 'processing' | 'ready' | 'error';
+export type VideoStatus = 'uploading' | 'encoding' | 'processing' | 'ready' | 'error';
 
 // 영상 버전 DB 레코드
 export interface VideoVersion {
@@ -25,6 +25,13 @@ export interface VideoVersion {
   // 승인 관련 필드
   approved_at: string | null;
   approved_by: string | null;
+  // 워터마크 설정
+  watermark_enabled?: boolean;
+  // Cloudflare Stream 관련 필드
+  stream_video_id: string | null;
+  stream_ready: boolean;
+  hls_url: string | null;
+  download_url: string | null;
 }
 
 // 영상 버전 with 업로더 정보
@@ -170,6 +177,7 @@ export function formatDuration(seconds: number | null): string {
 export function getStatusText(status: VideoStatus): string {
   const statusMap: Record<VideoStatus, string> = {
     uploading: '업로드 중',
+    encoding: '인코딩 중',
     processing: '처리 중',
     ready: '준비 완료',
     error: '오류',
@@ -183,6 +191,7 @@ export function getStatusText(status: VideoStatus): string {
 export function getStatusColor(status: VideoStatus): string {
   const colorMap: Record<VideoStatus, string> = {
     uploading: 'bg-blue-100 text-blue-700',
+    encoding: 'bg-purple-100 text-purple-700',
     processing: 'bg-yellow-100 text-yellow-700',
     ready: 'bg-green-100 text-green-700',
     error: 'bg-red-100 text-red-700',

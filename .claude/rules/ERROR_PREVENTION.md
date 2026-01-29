@@ -1,7 +1,7 @@
 # NAVIG 오류 방지 가이드 (Error Prevention Guide)
 
-**버전:** 2.5
-**최종 수정:** 2026-01-28
+**버전:** 2.6
+**최종 수정:** 2026-01-29
 **목적:** 개발 중 발생한 오류와 해결책을 문서화하여 재발 방지
 
 ---
@@ -1392,3 +1392,310 @@ useEffect(() => {
 | `src/components/chat/ChatInput.tsx` | 채팅 입력 (비차단 전송 패턴) |
 | `supabase/migrations/00002_rls_policies.sql` | RLS 정책 정의 |
 | `supabase/migrations/00003_fix_project_members_rls.sql` | RLS 수정 마이그레이션 |
+| `src/lib/cloudflare/stream.ts` | Cloudflare Stream API 클라이언트 |
+| `src/lib/toss/client.ts` | Toss Payments API 클라이언트 |
+| `src/lib/usage/checker.ts` | 사용량 계산 유틸리티 |
+
+---
+
+## 22. 외부 API 연동 관련
+
+### 22.1 문제: 외부 API 응답 형식 불일치
+
+**원인:**
+- 외부 API(Cloudflare, Toss 등)는 내부 API와 다른 응답 구조 사용
+- 내부 API는 `{ data: ... }` 래핑, 외부 API는 직접 데이터 반환
+- 응답 구조를 잘못 가정하면 `undefined` 접근 에러
+
+**해결책:**
+```typescript
+// ❌ Bad: 내부 API 패턴으로 외부 API 응답 접근
+const response = await fetch('https://api.cloudflare.com/...');
+const json = await response.json();
+const data = json.data;  // Cloudflare는 { result: ... } 형태!
+
+// ✅ Good: 외부 API별 응답 구조 확인
+// Cloudflare Stream API
+const cfResponse = await fetch('https://api.cloudflare.com/...');
+const cfJson = await cfResponse.json();
+const video = cfJson.result;  // Cloudflare는 result 키 사용
+
+// Toss Payments API
+const tossResponse = await fetch('https://api.tosspayments.com/...');
+const payment = await tossResponse.json();  // 직접 데이터 반환
+```
+
+**주요 외부 API 응답 패턴:**
+
+| API | 성공 응답 | 에러 응답 |
+|-----|----------|----------|
+| Cloudflare | `{ result: data, success: true }` | `{ success: false, errors: [...] }` |
+| Toss Payments | `{ ...data }` (직접) | `{ code: "...", message: "..." }` |
+| Supabase (내부) | `{ data, error }` | `{ data: null, error: {...} }` |
+
+**규칙:**
+- 외부 API 연동 전 공식 문서에서 응답 형식 확인
+- 응답 타입을 명시적으로 정의
+- 에러 응답도 별도로 타입 정의
+
+---
+
+### 22.2 문제: 외부 API 인증 헤더 누락
+
+**원인:**
+- 환경 변수 미설정 또는 오타
+- Bearer 토큰 형식 오류
+- API 키 위치 오류 (Header vs Query)
+
+**해결책:**
+```typescript
+// ❌ Bad: 하드코딩 또는 검증 없이 사용
+const response = await fetch(url, {
+  headers: { 'Authorization': process.env.API_KEY }  // Bearer 누락!
+});
+
+// ✅ Good: 환경 변수 검증 + 올바른 형식
+const apiKey = process.env.CLOUDFLARE_API_TOKEN;
+if (!apiKey) {
+  throw new Error('CLOUDFLARE_API_TOKEN 환경 변수가 설정되지 않았습니다');
+}
+
+const response = await fetch(url, {
+  headers: {
+    'Authorization': `Bearer ${apiKey}`,
+    'Content-Type': 'application/json',
+  }
+});
+```
+
+**규칙:**
+- 환경 변수 존재 여부 반드시 체크
+- Bearer 토큰은 `Bearer ` 접두사 필수
+- 개발 환경에서 누락된 환경 변수 명확히 로깅
+
+---
+
+## 23. 영상 스트리밍 관련
+
+### 23.1 문제: Cloudflare Stream 영상 상태 미확인
+
+**원인:**
+- 업로드 직후 영상이 아직 처리 중(processing)
+- 처리 완료 전 재생 시도 시 에러
+- 상태 확인 없이 playback URL 사용
+
+**해결책:**
+```typescript
+// ❌ Bad: 상태 확인 없이 바로 재생
+const streamUrl = `https://customer-xxx.cloudflarestream.com/${videoId}/manifest/video.m3u8`;
+<video src={streamUrl} />  // 처리 중이면 에러!
+
+// ✅ Good: 상태 확인 후 조건부 렌더링
+interface StreamStatus {
+  state: 'pendingupload' | 'uploading' | 'queued' | 'inprogress' | 'ready' | 'error';
+  pctComplete?: number;
+}
+
+const [status, setStatus] = useState<StreamStatus | null>(null);
+
+useEffect(() => {
+  async function checkStatus() {
+    const res = await fetch(`/api/videos/${videoId}/stream-status`);
+    const data = await res.json();
+    setStatus(data.status);
+  }
+
+  const interval = setInterval(checkStatus, 5000);  // 5초마다 폴링
+  return () => clearInterval(interval);
+}, [videoId]);
+
+// 상태에 따른 UI
+{status?.state === 'ready' ? (
+  <video src={streamUrl} />
+) : status?.state === 'inprogress' ? (
+  <div>인코딩 중... {status.pctComplete}%</div>
+) : (
+  <div>영상 처리 대기 중...</div>
+)}
+```
+
+**Cloudflare Stream 상태값:**
+- `pendingupload`: 업로드 대기
+- `uploading`: 업로드 중
+- `queued`: 인코딩 대기
+- `inprogress`: 인코딩 중 (pctComplete로 진행률)
+- `ready`: 재생 가능
+- `error`: 에러 발생
+
+**규칙:**
+- 업로드 후 반드시 상태 폴링 구현
+- `ready` 상태에서만 재생 URL 사용
+- 에러 상태 별도 처리 (재업로드 유도)
+
+---
+
+### 23.2 문제: HLS/DASH 스트리밍 브라우저 호환성
+
+**원인:**
+- Safari는 HLS(.m3u8) 네이티브 지원
+- Chrome/Firefox는 HLS 네이티브 미지원, 라이브러리 필요
+- DASH는 별도 플레이어 필요
+
+**해결책:**
+```typescript
+// ✅ Good: hls.js 사용하여 크로스 브라우저 지원
+import Hls from 'hls.js';
+
+function VideoPlayer({ src }: { src: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Safari는 네이티브 HLS 지원
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = src;
+    }
+    // 기타 브라우저는 hls.js 사용
+    else if (Hls.isSupported()) {
+      const hls = new Hls();
+      hls.loadSource(src);
+      hls.attachMedia(video);
+
+      return () => {
+        hls.destroy();
+      };
+    }
+  }, [src]);
+
+  return <video ref={videoRef} controls />;
+}
+```
+
+**규칙:**
+- HLS 스트리밍 시 hls.js 라이브러리 사용
+- Safari 네이티브 지원 먼저 체크
+- cleanup 시 hls.destroy() 필수 호출
+
+---
+
+## 24. 결제/구독 관련
+
+### 24.1 문제: 사용량 계산 시 JSONB 필드 처리 오류
+
+**원인:**
+- PostgreSQL JSONB 배열에서 숫자 합산 시 타입 처리 필요
+- Supabase 쿼리 결과의 JSONB는 JavaScript 배열로 자동 변환
+- 하지만 내부 필드 타입은 보장되지 않음
+
+**해결책:**
+```typescript
+// ❌ Bad: 타입 검증 없이 직접 합산
+const { data } = await supabase.from('chat_messages').select('attachments');
+const totalSize = data.reduce((sum, msg) => {
+  return sum + msg.attachments.reduce((s, a) => s + a.size, 0);  // 타입 에러 가능!
+}, 0);
+
+// ✅ Good: 타입 검증 + null 체크
+interface Attachment {
+  name: string;
+  url: string;
+  size?: number;  // optional
+  type: string;
+}
+
+const { data } = await supabase.from('chat_messages').select('attachments');
+
+let totalSize = 0;
+if (data) {
+  for (const msg of data) {
+    const attachments = msg.attachments as Attachment[] | null;
+    if (attachments && Array.isArray(attachments)) {
+      totalSize += attachments.reduce((sum, att) => sum + (att.size || 0), 0);
+    }
+  }
+}
+```
+
+**규칙:**
+- JSONB 필드는 항상 타입 단언 후 사용
+- 배열 여부 `Array.isArray()` 체크
+- 숫자 필드는 `|| 0` 또는 `?? 0`로 기본값 설정
+- null/undefined 방어 코드 필수
+
+---
+
+### 24.2 문제: 구독 상태 확인 로직 오류
+
+**원인:**
+- 구독 상태가 여러 필드에 분산 (status, ends_at, canceled_at 등)
+- 만료/취소/활성 상태 판단 로직 복잡
+- 시간대(timezone) 처리 오류
+
+**해결책:**
+```typescript
+// ❌ Bad: 단순 status만 체크
+const isActive = subscription.status === 'active';
+
+// ✅ Good: 모든 조건 종합 체크
+function isSubscriptionActive(subscription: Subscription): boolean {
+  if (!subscription) return false;
+
+  const now = new Date();
+
+  // 1. 기본 상태 체크
+  if (subscription.status !== 'active' && subscription.status !== 'trialing') {
+    return false;
+  }
+
+  // 2. 만료일 체크 (ends_at이 있고 지났으면 비활성)
+  if (subscription.ends_at) {
+    const endsAt = new Date(subscription.ends_at);
+    if (endsAt < now) return false;
+  }
+
+  // 3. 취소 예정이지만 아직 유효기간 내
+  if (subscription.canceled_at && subscription.ends_at) {
+    const endsAt = new Date(subscription.ends_at);
+    return endsAt > now;  // 아직 유효기간 내면 활성
+  }
+
+  return true;
+}
+
+// 사용
+const canUseFeature = isSubscriptionActive(subscription) &&
+  subscription.plan.features.includes(featureName);
+```
+
+**규칙:**
+- 구독 상태는 전용 유틸리티 함수로 판단
+- status, ends_at, canceled_at 모두 고려
+- 시간 비교는 항상 UTC 기준
+- 플랜별 기능 제한은 별도 체크
+
+---
+
+## 25. 체크리스트 (추가)
+
+### 외부 API 연동 시 (§22)
+- [ ] 공식 문서에서 응답 형식 확인 (§22.1)
+- [ ] 응답 타입 명시적으로 정의
+- [ ] 에러 응답 타입도 정의
+- [ ] 환경 변수 존재 여부 체크 (§22.2)
+- [ ] 인증 헤더 형식 확인 (Bearer 등)
+
+### 영상 스트리밍 시 (§23)
+- [ ] 업로드 후 상태 폴링 구현 (§23.1)
+- [ ] `ready` 상태에서만 재생
+- [ ] 처리 중/에러 상태 UI 구현
+- [ ] hls.js 사용하여 크로스 브라우저 지원 (§23.2)
+- [ ] cleanup 시 hls.destroy() 호출
+
+### 결제/구독 시스템 (§24)
+- [ ] JSONB 필드 타입 검증 (§24.1)
+- [ ] Array.isArray() 체크
+- [ ] 숫자 필드 기본값 설정
+- [ ] 구독 상태 종합 판단 함수 사용 (§24.2)
+- [ ] 시간 비교는 UTC 기준

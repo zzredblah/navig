@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, use } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Settings, UserPlus, Users, Trash2, Pencil, FileText, Video, LayoutGrid } from 'lucide-react';
+import { ArrowLeft, Settings, UserPlus, Users, Trash2, Pencil, FileText, Video, LayoutGrid, Droplets } from 'lucide-react';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
@@ -95,6 +95,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       });
 
       if (response.ok) {
+        // 사이드바 사용량 업데이트
+        window.dispatchEvent(new CustomEvent('usage-updated'));
         router.push('/projects');
       }
     } catch {
@@ -260,6 +262,26 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             </Button>
           </CardContent>
         </Card>
+
+        {/* 워터마크 설정 카드 (편집 권한 필요) */}
+        {canEdit && (
+          <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => router.push(`/projects/${resolvedParams.id}/settings`)}>
+            <CardContent className="flex items-center justify-between p-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center">
+                  <Droplets className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-900">워터마크 설정</h3>
+                  <p className="text-sm text-gray-500">검토용 영상에 워터마크를 적용합니다</p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm">
+                설정
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* 피드백 통계 */}
         <ProjectFeedbackStats projectId={resolvedParams.id} />

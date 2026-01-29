@@ -11,11 +11,12 @@
  */
 
 import { useCallback, useRef, useState } from 'react';
-import { Upload, X, Video, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { Upload, X, Video, Loader2, CheckCircle, AlertCircle, Droplet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -47,6 +48,7 @@ export function VideoUploader({
   const [isDragOver, setIsDragOver] = useState(false);
   const [changeNotes, setChangeNotes] = useState('');
   const [versionName, setVersionName] = useState('');
+  const [watermarkEnabled, setWatermarkEnabled] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { state, selectFile, startUpload, cancelUpload, resetState } =
@@ -70,6 +72,7 @@ export function VideoUploader({
     resetState();
     setChangeNotes('');
     setVersionName('');
+    setWatermarkEnabled(true);
     onOpenChange(false);
   }, [state.status, cancelUpload, resetState, onOpenChange]);
 
@@ -113,8 +116,12 @@ export function VideoUploader({
     if (!changeNotes.trim()) {
       return;
     }
-    await startUpload(changeNotes.trim(), versionName.trim() || undefined);
-  }, [changeNotes, versionName, startUpload]);
+    await startUpload({
+      changeNotes: changeNotes.trim(),
+      versionName: versionName.trim() || undefined,
+      watermarkEnabled,
+    });
+  }, [changeNotes, versionName, watermarkEnabled, startUpload]);
 
   // 파일 선택 취소
   const handleRemoveFile = useCallback(() => {
@@ -205,9 +212,17 @@ export function VideoUploader({
               <div className="flex items-center justify-between text-xs text-gray-500">
                 <span>
                   {state.status === 'preparing' && '준비 중...'}
-                  {state.status === 'uploading' &&
-                    `업로드 중... (${state.currentPart}/${state.totalParts})`}
-                  {state.status === 'processing' && '처리 중...'}
+                  {state.status === 'uploading' && (
+                    state.totalParts > 0
+                      ? `업로드 중... (${state.currentPart}/${state.totalParts})`
+                      : '업로드 중...'
+                  )}
+                  {state.status === 'processing' && (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+                      인코딩 중... (영상 처리에 시간이 걸릴 수 있습니다)
+                    </>
+                  )}
                 </span>
                 <span>{state.progress}%</span>
               </div>
@@ -257,6 +272,25 @@ export function VideoUploader({
                   onChange={(e) => setChangeNotes(e.target.value)}
                   rows={3}
                 />
+              </div>
+
+              {/* 워터마크 옵션 */}
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <Checkbox
+                  id="watermark"
+                  checked={watermarkEnabled}
+                  onCheckedChange={(checked) => setWatermarkEnabled(checked === true)}
+                />
+                <label
+                  htmlFor="watermark"
+                  className="flex items-center gap-2 text-sm font-medium text-gray-700 cursor-pointer"
+                >
+                  <Droplet className="h-4 w-4 text-primary-500" />
+                  워터마크 포함
+                </label>
+                <span className="text-xs text-gray-500">
+                  체크 시 영상 재생 시 워터마크가 표시됩니다
+                </span>
               </div>
             </>
           )}

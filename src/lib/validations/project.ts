@@ -27,8 +27,20 @@ export const projectQuerySchema = z.object({
   status: z.enum(['planning', 'production', 'review', 'completed']).optional(),
 });
 
+// 워터마크 설정 스키마
+export const watermarkSettingsSchema = z.object({
+  enabled: z.boolean(),
+  type: z.enum(['logo', 'text', 'timecode', 'combined']),
+  position: z.enum(['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center']),
+  opacity: z.number().min(0).max(1),
+  text: z.string().max(100).optional(),
+  logo_url: z.string().url().optional().nullable(),
+  show_timecode: z.boolean(),
+});
+
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 export type AddMemberInput = z.infer<typeof addMemberSchema>;
 export type UpdateMemberInput = z.infer<typeof updateMemberSchema>;
 export type ProjectQueryInput = z.infer<typeof projectQuerySchema>;
+export type WatermarkSettingsInput = z.infer<typeof watermarkSettingsSchema>;

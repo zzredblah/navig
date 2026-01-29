@@ -1,13 +1,15 @@
 /**
  * 영상 업로드 완료 API
- * POST - 멀티파트 업로드 완료 처리
+ * POST - R2 멀티파트 업로드 완료 처리
+ *
+ * Note: Cloudflare Stream 업로드는 이 API를 사용하지 않습니다.
+ * Stream은 Webhook 또는 상태 폴링을 통해 완료를 처리합니다.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import {
   completeMultipartUpload,
-  getPublicUrl,
   uploadFile,
   generateFileKey,
 } from '@/lib/cloudflare/r2';
@@ -93,6 +95,14 @@ export async function POST(
       );
     }
 
+    // Stream 영상은 이 API를 사용하지 않음
+    if (existingVideo.stream_video_id) {
+      return NextResponse.json(
+        { error: 'Stream 영상은 자동으로 처리됩니다. 상태 폴링을 사용하세요.' },
+        { status: 400 }
+      );
+    }
+
     // 이미 완료된 업로드인지 확인
     if (existingVideo.status !== 'uploading') {
       return NextResponse.json(
@@ -101,7 +111,7 @@ export async function POST(
       );
     }
 
-    // upload_id 확인
+    // upload_id 확인 (R2 멀티파트 업로드용)
     if (!existingVideo.upload_id || !existingVideo.file_key) {
       return NextResponse.json(
         { error: '업로드 정보가 유효하지 않습니다' },

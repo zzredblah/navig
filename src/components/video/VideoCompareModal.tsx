@@ -55,6 +55,8 @@ import { OverlayCompare } from './compare/OverlayCompare';
 import { WipeCompare } from './compare/WipeCompare';
 import { VideoVersionWithUploader, formatDuration } from '@/types/video';
 import { cn } from '@/lib/utils';
+import type { WatermarkSettings } from '@/types/watermark';
+import { DEFAULT_WATERMARK_SETTINGS } from '@/types/watermark';
 
 type ModalMode = 'direct' | 'select';
 type CompareMode = 'slider' | 'side-by-side' | 'overlay' | 'wipe';
@@ -91,6 +93,8 @@ export function VideoCompareModal({
   const [versions, setVersions] = useState<VideoVersionWithUploader[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [watermarkSettings, setWatermarkSettings] = useState<WatermarkSettings | null>(null);
+  const [logoImage, setLogoImage] = useState<HTMLImageElement | null>(null);
 
   const [leftVersionId, setLeftVersionId] = useState<string>('');
   const [rightVersionId, setRightVersionId] = useState<string>('');
@@ -182,6 +186,48 @@ export function VideoCompareModal({
       if (directVideo2) setRightVersionId(directVideo2.id);
     }
   }, [mode, directVideo1, directVideo2]);
+
+  // 워터마크 설정 로드
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    // projectId 결정 (direct 모드면 영상에서, select 모드면 props에서)
+    const currentProjectId = mode === 'direct' ? directVideo1?.project_id : projectId;
+    if (!currentProjectId) return;
+
+    async function fetchWatermark() {
+      try {
+        const response = await fetch(`/api/projects/${currentProjectId}/watermark`);
+        if (response.ok) {
+          const { data } = await response.json();
+          setWatermarkSettings(data.settings || DEFAULT_WATERMARK_SETTINGS);
+        }
+      } catch (err) {
+        console.error('워터마크 설정 로드 실패:', err);
+        setWatermarkSettings(DEFAULT_WATERMARK_SETTINGS);
+      }
+    }
+
+    fetchWatermark();
+  }, [isModalOpen, mode, directVideo1?.project_id, projectId]);
+
+  // 로고 이미지 로드
+  useEffect(() => {
+    if (watermarkSettings?.logo_url && watermarkSettings.type === 'logo') {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        setLogoImage(img);
+      };
+      img.onerror = () => {
+        console.error('로고 이미지 로드 실패');
+        setLogoImage(null);
+      };
+      img.src = watermarkSettings.logo_url;
+    } else {
+      setLogoImage(null);
+    }
+  }, [watermarkSettings?.logo_url, watermarkSettings?.type]);
 
   // 버전이 2개 미만인지 체크
   const hasEnoughVersions =
@@ -512,6 +558,15 @@ export function VideoCompareModal({
                   {compareMode === 'side-by-side' && <SideBySideCompare {...compareProps} />}
                   {compareMode === 'overlay' && <OverlayCompare {...compareProps} />}
                   {compareMode === 'wipe' && <WipeCompare {...compareProps} />}
+
+                  {/* 워터마크 오버레이 */}
+                  {watermarkSettings?.enabled && (
+                    <CompareWatermarkOverlay
+                      settings={watermarkSettings}
+                      logoImage={logoImage}
+                      currentTime={currentTime}
+                    />
+                  )}
 
                   {/* 중앙 플레이 버튼 (일시정지 상태에서 표시) */}
                   {!isPlaying && (
@@ -1065,4 +1120,93 @@ function getTimeDiff(date1: string, date2: string): string {
   if (diffHours > 0) return `${diffHours}시간`;
   if (diffMins > 0) return `${diffMins}분`;
   return '즉시';
+}
+
+// 시간 포맷팅 (워터마크용)
+function formatTimecode(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// 워터마크 오버레이 컴포넌트
+function CompareWatermarkOverlay({
+  settings,
+  logoImage,
+  currentTime,
+}: {
+  settings: WatermarkSettings;
+  logoImage: HTMLImageElement | null;
+  currentTime: number;
+}) {
+  // 위치 계산
+  const getPositionClasses = () => {
+    switch (settings.position) {
+      case 'top-left':
+        return 'top-4 left-4';
+      case 'top-right':
+        return 'top-4 right-4';
+      case 'bottom-left':
+        return 'bottom-4 left-4';
+      case 'bottom-right':
+        return 'bottom-4 right-4';
+      case 'center':
+        return 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2';
+      default:
+        return 'bottom-4 right-4';
+    }
+  };
+
+  // 텍스트 워터마크 내용 생성
+  const getWatermarkText = () => {
+    let text = '';
+    if (settings.type === 'text' || settings.type === 'combined') {
+      text = settings.text || 'NAVIG Corp';
+    }
+    if (settings.type === 'timecode' || settings.type === 'combined' || settings.show_timecode) {
+      const timecode = formatTimecode(currentTime);
+      if (text) {
+        text += `  ${timecode}`;
+      } else {
+        text = timecode;
+      }
+    }
+    return text;
+  };
+
+  // 로고 타입인 경우
+  if (settings.type === 'logo' && logoImage) {
+    return (
+      <div
+        className={`absolute ${getPositionClasses()} pointer-events-none z-10`}
+        style={{ opacity: settings.opacity }}
+      >
+        <img
+          src={logoImage.src}
+          alt="워터마크"
+          className="h-8 w-auto object-contain"
+        />
+      </div>
+    );
+  }
+
+  // 텍스트/타임코드 타입인 경우
+  const watermarkText = getWatermarkText();
+  if (!watermarkText) return null;
+
+  return (
+    <div
+      className={`absolute ${getPositionClasses()} pointer-events-none z-10`}
+      style={{ opacity: settings.opacity }}
+    >
+      <span
+        className="text-white text-sm font-medium"
+        style={{
+          textShadow: '0 1px 2px rgba(0, 0, 0, 0.8), 0 0 4px rgba(0, 0, 0, 0.5)',
+        }}
+      >
+        {watermarkText}
+      </span>
+    </div>
+  );
 }

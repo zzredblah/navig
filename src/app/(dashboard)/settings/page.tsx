@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Settings, User, Check, Loader2 } from 'lucide-react';
+import { Settings, User, Check, Loader2, CreditCard } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
@@ -95,7 +95,7 @@ export default function SettingsPage() {
 
       {/* 프로필 설정 링크 */}
       <Card className="border-0 shadow-sm">
-        <CardContent className="p-4">
+        <CardContent className="p-4 space-y-1">
           <Link
             href="/settings/profile"
             className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
@@ -106,6 +106,19 @@ export default function SettingsPage() {
             <div>
               <div className="font-medium text-gray-900">프로필 설정</div>
               <div className="text-sm text-gray-500">이름, 연락처, 비밀번호, 아바타 변경</div>
+            </div>
+          </Link>
+
+          <Link
+            href="/settings/subscription"
+            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <div className="w-10 h-10 rounded-lg bg-green-100 text-green-600 flex items-center justify-center">
+              <CreditCard className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="font-medium text-gray-900">구독 및 결제</div>
+              <div className="text-sm text-gray-500">플랜 관리, 결제 내역, 사용량 확인</div>
             </div>
           </Link>
         </CardContent>

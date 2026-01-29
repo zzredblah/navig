@@ -1,13 +1,14 @@
 /**
  * 영상 버전 상세 API
- * GET    - 영상 상세 조회
+ * GET    - 영상 상세 조회 (Stream HLS URL 포함)
  * PATCH  - 영상 정보 수정
- * DELETE - 영상 삭제
+ * DELETE - 영상 삭제 (Stream + R2 모두 지원)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { deleteFile } from '@/lib/cloudflare/r2';
+import { deleteVideo as deleteStreamVideo, isStreamConfigured } from '@/lib/cloudflare/stream';
 import { z } from 'zod';
 
 // 수정 요청 스키마
@@ -260,7 +261,18 @@ export async function DELETE(
       );
     }
 
-    // R2에서 파일 삭제
+    // Stream 영상 삭제
+    if (existingVideo.stream_video_id && isStreamConfigured()) {
+      try {
+        await deleteStreamVideo(existingVideo.stream_video_id);
+        console.log('[Video DELETE] Stream 영상 삭제 성공:', existingVideo.stream_video_id);
+      } catch (streamError) {
+        console.error('[Video DELETE] Stream 영상 삭제 오류:', streamError);
+        // Stream 삭제 실패해도 DB 삭제는 진행
+      }
+    }
+
+    // R2에서 파일 삭제 (R2 업로드인 경우)
     if (existingVideo.file_key) {
       try {
         await deleteFile('videos', existingVideo.file_key);

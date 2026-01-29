@@ -1,5 +1,6 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { createProjectSchema, projectQuerySchema } from '@/lib/validations/project';
+import { checkUsage } from '@/lib/usage/checker';
 import { NextRequest, NextResponse } from 'next/server';
 
 // 프로젝트 목록 조회
@@ -137,6 +138,21 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const validatedData = createProjectSchema.parse(body);
+
+    // 사용량 제한 체크
+    const usageCheck = await checkUsage(user.id, 'create_project');
+    if (!usageCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: usageCheck.message || '프로젝트 생성 제한에 도달했습니다',
+          code: 'USAGE_LIMIT_EXCEEDED',
+          current: usageCheck.current,
+          limit: usageCheck.limit,
+          upgrade_required: usageCheck.upgrade_required,
+        },
+        { status: 403 }
+      );
+    }
 
     // Admin 클라이언트 사용 (RLS 우회)
     const adminClient = createAdminClient();

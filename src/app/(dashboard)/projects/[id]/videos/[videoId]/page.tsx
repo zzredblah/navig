@@ -9,6 +9,7 @@
 import { useState, useEffect, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Hls from 'hls.js';
 import {
   ArrowLeft,
   Video,
@@ -18,6 +19,8 @@ import {
   MessageSquare,
   X,
   GitCompare,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +30,16 @@ import { ApprovalButton } from '@/components/video/ApprovalButton';
 import { VideoCompareModal } from '@/components/video/VideoCompareModal';
 import { cn } from '@/lib/utils';
 import { useVideoHotkeys } from '@/hooks/use-global-hotkeys';
+import { useWatermark } from '@/hooks/use-watermark';
+import { useWatermarkDownload } from '@/hooks/use-watermark-download';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Progress } from '@/components/ui/progress';
 
 interface VideoVersion {
   id: string;
@@ -40,10 +53,16 @@ interface VideoVersion {
   resolution: string | null;
   file_size: number;
   change_notes: string;
-  status: 'uploading' | 'processing' | 'ready' | 'error';
+  status: 'uploading' | 'encoding' | 'processing' | 'ready' | 'error';
   created_at: string;
   approved_at: string | null;
   approved_by: string | null;
+  watermark_enabled: boolean;
+  // Cloudflare Stream 관련 필드
+  stream_video_id: string | null;
+  stream_ready: boolean;
+  hls_url: string | null;
+  download_url: string | null;
   uploader: {
     id: string;
     name: string;
@@ -58,6 +77,7 @@ interface VideoVersion {
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   uploading: { label: '업로드 중', color: 'bg-blue-100 text-blue-700' },
+  encoding: { label: '인코딩 중', color: 'bg-orange-100 text-orange-700' },
   processing: { label: '처리 중', color: 'bg-yellow-100 text-yellow-700' },
   ready: { label: '준비됨', color: 'bg-green-100 text-green-700' },
   error: { label: '오류', color: 'bg-red-100 text-red-700' },
@@ -89,6 +109,7 @@ export default function VideoReviewPage({
   const resolvedParams = use(params);
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
 
   // 상태
   const [video, setVideo] = useState<VideoVersion | null>(null);
@@ -102,7 +123,27 @@ export default function VideoReviewPage({
   const [drawingImage, setDrawingImage] = useState<string | null>(null);
   const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
   const [showCompareModal, setShowCompareModal] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showControls, setShowControls] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const videoContainerRef = useRef<HTMLDivElement>(null);
+  const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // 워터마크 설정 및 렌더링 (영상에 워터마크 활성화된 경우에만)
+  const { canvasRef: watermarkCanvasRef, settings: watermarkSettings } = useWatermark({
+    projectId: resolvedParams.id,
+    videoRef,
+    containerRef: videoContainerRef,
+    enabled: !!(video?.file_url || video?.hls_url) && video?.watermark_enabled !== false,
+  });
+
+  // 워터마크 포함 다운로드
+  const {
+    isProcessing: isDownloadProcessing,
+    progress: downloadProgress,
+    downloadWithWatermark,
+    cancelDownload,
+  } = useWatermarkDownload();
 
   // 영상 정보 조회
   useEffect(() => {
@@ -139,6 +180,79 @@ export default function VideoReviewPage({
     fetchVideo();
     fetchCurrentUser();
   }, [resolvedParams.id, resolvedParams.videoId, router]);
+
+  // HLS.js 초기화 (Stream 영상용)
+  useEffect(() => {
+    const videoElement = videoRef.current;
+
+    // HLS URL이 없거나 비디오 요소가 없거나 Stream이 준비되지 않았으면 스킵
+    if (!video?.hls_url || !videoElement) {
+      return;
+    }
+
+    // Stream이 아직 인코딩 중이면 스킵
+    if (!video.stream_ready) {
+      console.log('[HLS] Stream not ready yet, waiting for encoding...');
+      return;
+    }
+
+    console.log('[HLS] Initializing with URL:', video.hls_url);
+
+    // 기존 HLS 인스턴스 정리
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+
+    // HLS.js 지원 확인
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        debug: false,
+      });
+
+      hls.loadSource(video.hls_url);
+      hls.attachMedia(videoElement);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        console.log('[HLS] Manifest parsed, ready to play');
+      });
+
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        console.warn('[HLS] Error:', data.type, data.details, data.fatal);
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.log('[HLS] Network error, trying to recover...');
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.log('[HLS] Media error, trying to recover...');
+              hls.recoverMediaError();
+              break;
+            default:
+              console.error('[HLS] Unrecoverable error, destroying...');
+              hls.destroy();
+              break;
+          }
+        }
+      });
+
+      hlsRef.current = hls;
+    } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari 네이티브 HLS 지원
+      videoElement.src = video.hls_url;
+    }
+
+    // 정리 함수
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [video?.hls_url, video?.stream_ready]);
 
   // 비디오 시간 업데이트
   const handleTimeUpdate = () => {
@@ -224,6 +338,80 @@ export default function VideoReviewPage({
   const handleToggleFeedbackPanel = useCallback(() => {
     setShowFeedbackPanel((prev) => !prev);
   }, []);
+
+  // 전체화면 토글 (컨테이너 기준)
+  const handleToggleFullscreen = useCallback(async () => {
+    if (!videoContainerRef.current) return;
+
+    try {
+      if (!document.fullscreenElement) {
+        await videoContainerRef.current.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (error) {
+      console.error('전체화면 전환 실패:', error);
+    }
+  }, []);
+
+  // 전체화면 상태 변경 감지
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  // 컨트롤 표시/숨김 타이머
+  const resetControlsTimeout = useCallback(() => {
+    setShowControls(true);
+    if (hideControlsTimeoutRef.current) {
+      clearTimeout(hideControlsTimeoutRef.current);
+    }
+    if (isPlaying) {
+      hideControlsTimeoutRef.current = setTimeout(() => {
+        setShowControls(false);
+      }, 3000);
+    }
+  }, [isPlaying]);
+
+  // 비디오 재생 상태 감지
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handlePlay = () => {
+      setIsPlaying(true);
+      resetControlsTimeout();
+    };
+    const handlePause = () => {
+      setIsPlaying(false);
+      setShowControls(true);
+      if (hideControlsTimeoutRef.current) {
+        clearTimeout(hideControlsTimeoutRef.current);
+      }
+    };
+
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+
+    return () => {
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+      if (hideControlsTimeoutRef.current) {
+        clearTimeout(hideControlsTimeoutRef.current);
+      }
+    };
+  }, [resetControlsTimeout]);
+
+  // 마우스 이동 시 컨트롤 표시
+  const handleMouseMove = useCallback(() => {
+    resetControlsTimeout();
+  }, [resetControlsTimeout]);
 
   // 영상 키보드 단축키 활성화
   useVideoHotkeys({
@@ -311,12 +499,48 @@ export default function VideoReviewPage({
             {showFeedbackPanel ? '피드백 숨기기' : '피드백 보기'}
           </Button>
           {video.file_url && (
-            <Button variant="outline" size="sm" asChild>
-              <a href={video.file_url} download={video.original_filename}>
-                <Download className="h-4 w-4 mr-2" />
-                다운로드
-              </a>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={isDownloadProcessing}>
+                  {isDownloadProcessing ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Download className="h-4 w-4 mr-2" />
+                  )}
+                  {isDownloadProcessing ? `${downloadProgress}%` : '다운로드'}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <a href={video.file_url} download={video.original_filename}>
+                    원본 다운로드
+                  </a>
+                </DropdownMenuItem>
+                {video.watermark_enabled !== false && watermarkSettings && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => {
+                        if (video.file_url && watermarkSettings) {
+                          downloadWithWatermark(
+                            video.file_url,
+                            video.original_filename,
+                            {
+                              text: watermarkSettings.type === 'text' || watermarkSettings.type === 'combined' ? watermarkSettings.text || 'NAVIG' : undefined,
+                              logoUrl: watermarkSettings.type === 'logo' ? watermarkSettings.logo_url || undefined : undefined,
+                              position: watermarkSettings.position,
+                              opacity: watermarkSettings.opacity,
+                            }
+                          );
+                        }
+                      }}
+                    >
+                      워터마크 포함 다운로드
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </div>
@@ -325,38 +549,137 @@ export default function VideoReviewPage({
       <div className="flex gap-4 h-[calc(100%-4rem)]">
         {/* 비디오 플레이어 */}
         <div
-          ref={videoContainerRef}
           className={cn(
-            'flex-1 flex flex-col bg-black rounded-lg overflow-hidden relative',
+            'flex-1 flex flex-col bg-black rounded-lg overflow-hidden',
             showFeedbackPanel ? 'lg:flex-[2]' : ''
           )}
         >
-          {video.file_url ? (
+          {/* Stream 인코딩 중인 경우 */}
+          {video.hls_url && !video.stream_ready ? (
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center text-white">
+                <Loader2 className="h-16 w-16 mx-auto mb-4 animate-spin opacity-70" />
+                <p className="text-lg font-medium mb-2">영상 인코딩 중...</p>
+                <p className="text-sm text-gray-400">잠시 후 다시 시도해주세요</p>
+              </div>
+            </div>
+          ) : (video.file_url || (video.hls_url && video.stream_ready)) ? (
             <>
-              <video
-                ref={videoRef}
-                src={video.file_url}
-                poster={video.thumbnail_url || undefined}
-                controls={!isDrawingMode}
-                crossOrigin="anonymous"
-                className="w-full h-full object-contain"
-                onTimeUpdate={handleTimeUpdate}
-                onLoadedMetadata={handleLoadedMetadata}
-              />
+              {/* 영상 + 워터마크 래퍼 */}
+              <div
+                ref={videoContainerRef}
+                className="flex-1 relative min-h-0"
+                onMouseMove={handleMouseMove}
+              >
+                <video
+                  ref={videoRef}
+                  src={video.file_url || undefined}
+                  poster={video.thumbnail_url || undefined}
+                  controls={false}
+                  crossOrigin="anonymous"
+                  className="w-full h-full object-contain cursor-pointer"
+                  onTimeUpdate={handleTimeUpdate}
+                  onLoadedMetadata={handleLoadedMetadata}
+                  onClick={handlePlayPause}
+                />
 
-              {/* 그리기 모드 오버레이 */}
-              {isDrawingMode && videoSize.width > 0 && (
-                <div className="absolute inset-0 bg-black/20">
-                  <DrawingCanvas
-                    width={videoSize.width}
-                    height={videoSize.height - 80}
-                    videoElement={videoRef.current}
-                    onSave={handleSaveDrawing}
-                    onCancel={handleCancelDrawing}
-                    className="w-full h-full"
+                {/* 워터마크 오버레이 - 영상 위에만 겹침 */}
+                <canvas
+                  ref={watermarkCanvasRef}
+                  className="absolute inset-0 pointer-events-none"
+                />
+
+                {/* 커스텀 컨트롤바 (네이티브 컨트롤 대신) */}
+                <div
+                  className={cn(
+                    'absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-4 py-3 transition-opacity duration-300 z-10',
+                    showControls && !isDrawingMode ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  )}
+                >
+                  {/* 프로그레스 바 */}
+                  <input
+                    type="range"
+                    min={0}
+                    max={duration || 100}
+                    value={currentTime}
+                    onChange={(e) => handleSeek(parseFloat(e.target.value))}
+                    className="w-full h-1 bg-white/30 rounded-full appearance-none cursor-pointer mb-2 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:cursor-pointer"
+                    style={{
+                      background: `linear-gradient(to right, #8B5CF6 ${(currentTime / (duration || 1)) * 100}%, rgba(255,255,255,0.3) ${(currentTime / (duration || 1)) * 100}%)`,
+                    }}
                   />
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      {/* 재생/일시정지 버튼 */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={handlePlayPause}
+                        className="h-8 w-8 text-white hover:bg-white/20"
+                      >
+                        {isPlaying ? (
+                          <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+                          </svg>
+                        ) : (
+                          <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        )}
+                      </Button>
+
+                      {/* 시간 표시 */}
+                      <span className="text-white text-sm font-mono">
+                        {formatDuration(Math.floor(currentTime))} / {formatDuration(Math.floor(duration))}
+                      </span>
+                    </div>
+
+                    {/* 전체화면 버튼 */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleToggleFullscreen}
+                      className="h-8 w-8 text-white hover:bg-white/20"
+                      title={isFullscreen ? '전체화면 종료' : '전체화면'}
+                    >
+                      {isFullscreen ? (
+                        <Minimize className="h-5 w-5" />
+                      ) : (
+                        <Maximize className="h-5 w-5" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
-              )}
+
+                {/* 중앙 재생 버튼 (일시정지 상태) */}
+                {!isPlaying && !isDrawingMode && showControls && (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center cursor-pointer"
+                    onClick={handlePlayPause}
+                  >
+                    <div className="w-16 h-16 rounded-full bg-white/90 hover:bg-white flex items-center justify-center shadow-xl transition-all hover:scale-110">
+                      <svg className="h-8 w-8 text-gray-900 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
+
+                {/* 그리기 모드 오버레이 */}
+                {isDrawingMode && videoSize.width > 0 && (
+                  <div className="absolute inset-0 bg-black/20" style={{ zIndex: 20 }}>
+                    <DrawingCanvas
+                      width={videoSize.width}
+                      height={videoSize.height - 80}
+                      videoElement={videoRef.current}
+                      onSave={handleSaveDrawing}
+                      onCancel={handleCancelDrawing}
+                      className="w-full h-full"
+                    />
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center">
@@ -368,7 +691,7 @@ export default function VideoReviewPage({
           )}
 
           {/* 영상 정보 */}
-          <div className="p-4 bg-gray-900 text-white">
+          <div className="p-4 bg-gray-900 text-white shrink-0">
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <span className="flex items-center gap-1">
                 <Info className="h-4 w-4 text-gray-400" />
@@ -416,6 +739,32 @@ export default function VideoReviewPage({
           >
             <MessageSquare className="h-5 w-5" />
           </Button>
+        </div>
+      )}
+
+      {/* 워터마크 다운로드 처리 중 오버레이 */}
+      {isDownloadProcessing && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl">
+            <div className="text-center">
+              <Loader2 className="h-10 w-10 text-primary-600 animate-spin mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                워터마크 처리 중
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">
+                영상에 워터마크를 합성하고 있습니다.
+                <br />
+                영상 길이에 따라 시간이 소요될 수 있습니다.
+              </p>
+              <Progress value={downloadProgress} className="h-2 mb-4" />
+              <p className="text-sm font-medium text-gray-700 mb-4">
+                {downloadProgress}% 완료
+              </p>
+              <Button variant="outline" onClick={cancelDownload}>
+                취소
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 

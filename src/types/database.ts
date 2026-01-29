@@ -25,7 +25,7 @@ export type DocumentType = 'request' | 'estimate' | 'contract';
 
 export type DocumentStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'signed';
 
-export type VideoStatus = 'uploading' | 'processing' | 'ready' | 'error';
+export type VideoStatus = 'uploading' | 'encoding' | 'processing' | 'ready' | 'error';
 
 export type FeedbackStatus = 'open' | 'resolved' | 'wontfix';
 
@@ -116,6 +116,9 @@ export interface Database {
           status: ProjectStatus;
           client_id: string;
           deadline: string | null;
+          watermark_settings: Json | null;
+          // Cloudflare Stream 워터마크 프로필 ID
+          stream_watermark_profile_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -126,6 +129,8 @@ export interface Database {
           status?: ProjectStatus;
           client_id: string;
           deadline?: string | null;
+          watermark_settings?: Json | null;
+          stream_watermark_profile_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -136,6 +141,8 @@ export interface Database {
           status?: ProjectStatus;
           client_id?: string;
           deadline?: string | null;
+          watermark_settings?: Json | null;
+          stream_watermark_profile_id?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -392,6 +399,12 @@ export interface Database {
           uploaded_by: string;
           approved_at: string | null;
           approved_by: string | null;
+          watermark_enabled: boolean;
+          // Cloudflare Stream 관련 필드
+          stream_video_id: string | null;
+          stream_ready: boolean;
+          hls_url: string | null;
+          download_url: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -415,6 +428,12 @@ export interface Database {
           uploaded_by: string;
           approved_at?: string | null;
           approved_by?: string | null;
+          watermark_enabled?: boolean;
+          // Cloudflare Stream 관련 필드
+          stream_video_id?: string | null;
+          stream_ready?: boolean;
+          hls_url?: string | null;
+          download_url?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -438,6 +457,12 @@ export interface Database {
           uploaded_by?: string;
           approved_at?: string | null;
           approved_by?: string | null;
+          watermark_enabled?: boolean;
+          // Cloudflare Stream 관련 필드
+          stream_video_id?: string | null;
+          stream_ready?: boolean;
+          hls_url?: string | null;
+          download_url?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -911,6 +936,20 @@ export type Notification = Tables<'notifications'>;
 export type NotificationSettings = Tables<'notification_settings'>;
 export type Board = Tables<'boards'>;
 export type BoardElement = Tables<'board_elements'>;
+
+// Re-export subscription types
+export type {
+  SubscriptionPlan,
+  Subscription,
+  Payment,
+  UsageRecord,
+  SubscriptionStatus,
+  PaymentStatus,
+  PaymentMethod,
+  BillingCycle,
+  PlanLimits,
+  PlanFeature,
+} from './subscription';
 
 // 확장 타입 (조인된 데이터)
 export type ProjectWithClient = Project & {

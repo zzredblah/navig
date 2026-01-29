@@ -33,14 +33,34 @@ const pageTitles: Record<string, string> = {
   '/dashboard': '대시보드',
   '/projects': '프로젝트',
   '/documents': '문서',
+  '/videos': '영상',
+  '/boards': '레퍼런스 보드',
   '/team': '팀 멤버',
+  '/notifications': '알림',
   '/settings': '설정',
+  '/help': '도움말',
 };
 
 function getPageTitle(pathname: string): string {
+  // 정확한 경로 매칭
   if (pageTitles[pathname]) return pageTitles[pathname];
-  if (pathname.startsWith('/projects/')) return '프로젝트';
+
+  // 프로젝트 내 페이지 감지 (더 구체적인 패턴 먼저)
+  if (pathname.match(/\/projects\/[^/]+\/videos/)) return '영상';
+  if (pathname.match(/\/projects\/[^/]+\/documents/)) return '문서';
+  if (pathname.match(/\/projects\/[^/]+\/boards/)) return '레퍼런스 보드';
+  if (pathname.match(/\/projects\/[^/]+\/members/)) return '팀 멤버';
+  if (pathname.match(/\/projects\/[^/]+\/settings/)) return '프로젝트 설정';
+
+  // 프로젝트 홈 (정확히 /projects/{id} 또는 /projects/{id}/)
+  if (pathname.match(/\/projects\/[^/]+\/?$/)) return '프로젝트 홈';
+
+  // 일반 경로
   if (pathname.startsWith('/documents/')) return '문서';
+  if (pathname.startsWith('/videos/')) return '영상';
+  if (pathname.startsWith('/boards/')) return '레퍼런스 보드';
+  if (pathname.startsWith('/settings/')) return '설정';
+
   return '';
 }
 

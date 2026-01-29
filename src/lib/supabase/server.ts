@@ -53,3 +53,25 @@ export function createAdminClient() {
     }
   );
 }
+
+/**
+ * Supabase Untyped Admin 클라이언트 (서버용)
+ * 마이그레이션으로 추가된 새 테이블에 접근할 때 사용
+ * Database 타입에 아직 추가되지 않은 테이블용
+ */
+export function createUntypedAdminClient() {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY가 설정되지 않았습니다.');
+  }
+
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    }
+  );
+}
