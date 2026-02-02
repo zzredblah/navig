@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 import { useVideoHotkeys } from '@/hooks/use-global-hotkeys';
 import { useWatermark } from '@/hooks/use-watermark';
 import { useWatermarkDownload } from '@/hooks/use-watermark-download';
+import { sanitizeStreamUrl } from '@/lib/cloudflare/stream';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -110,6 +111,7 @@ export default function VideoReviewPage({
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const playPromiseRef = useRef<Promise<void> | null>(null);
 
   // 상태
   const [video, setVideo] = useState<VideoVersion | null>(null);
@@ -192,11 +194,14 @@ export default function VideoReviewPage({
 
     // Stream이 아직 인코딩 중이면 스킵
     if (!video.stream_ready) {
-      console.log('[HLS] Stream not ready yet, waiting for encoding...');
       return;
     }
 
-    console.log('[HLS] Initializing with URL:', video.hls_url);
+    // 잘못된 URL 정리
+    const hlsUrl = sanitizeStreamUrl(video.hls_url);
+    if (!hlsUrl) {
+      return;
+    }
 
     // 기존 HLS 인스턴스 정리
     if (hlsRef.current) {
@@ -212,27 +217,19 @@ export default function VideoReviewPage({
         debug: false,
       });
 
-      hls.loadSource(video.hls_url);
+      hls.loadSource(hlsUrl);
       hls.attachMedia(videoElement);
 
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        console.log('[HLS] Manifest parsed, ready to play');
-      });
-
       hls.on(Hls.Events.ERROR, (event, data) => {
-        console.warn('[HLS] Error:', data.type, data.details, data.fatal);
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.log('[HLS] Network error, trying to recover...');
               hls.startLoad();
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              console.log('[HLS] Media error, trying to recover...');
               hls.recoverMediaError();
               break;
             default:
-              console.error('[HLS] Unrecoverable error, destroying...');
               hls.destroy();
               break;
           }
@@ -242,7 +239,7 @@ export default function VideoReviewPage({
       hlsRef.current = hls;
     } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
       // Safari 네이티브 HLS 지원
-      videoElement.src = video.hls_url;
+      videoElement.src = hlsUrl;
     }
 
     // 정리 함수
@@ -307,13 +304,34 @@ export default function VideoReviewPage({
   };
 
   // 영상 키보드 단축키 핸들러
-  const handlePlayPause = useCallback(() => {
-    if (videoRef.current) {
-      if (videoRef.current.paused) {
-        videoRef.current.play();
-      } else {
-        videoRef.current.pause();
+  const handlePlayPause = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.paused) {
+      try {
+        playPromiseRef.current = video.play();
+        await playPromiseRef.current;
+      } catch (e) {
+        // AbortError는 무시 (pause()에 의해 중단된 경우)
+        if (e instanceof DOMException && e.name === 'AbortError') {
+          return;
+        }
+        console.error('[VideoReview] 재생 실패:', e);
+      } finally {
+        playPromiseRef.current = null;
       }
+    } else {
+      // play() Promise가 진행 중이면 완료될 때까지 기다림
+      if (playPromiseRef.current) {
+        try {
+          await playPromiseRef.current;
+        } catch {
+          // 이미 실패한 Promise 무시
+        }
+        playPromiseRef.current = null;
+      }
+      video.pause();
     }
   }, []);
 
@@ -581,6 +599,8 @@ export default function VideoReviewPage({
                   onTimeUpdate={handleTimeUpdate}
                   onLoadedMetadata={handleLoadedMetadata}
                   onClick={handlePlayPause}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
                 />
 
                 {/* 워터마크 오버레이 - 영상 위에만 겹침 */}
@@ -668,10 +688,10 @@ export default function VideoReviewPage({
 
                 {/* 그리기 모드 오버레이 */}
                 {isDrawingMode && videoSize.width > 0 && (
-                  <div className="absolute inset-0 bg-black/20" style={{ zIndex: 20 }}>
+                  <div className="absolute inset-0" style={{ zIndex: 20 }}>
                     <DrawingCanvas
                       width={videoSize.width}
-                      height={videoSize.height - 80}
+                      height={videoSize.height}
                       videoElement={videoRef.current}
                       onSave={handleSaveDrawing}
                       onCancel={handleCancelDrawing}

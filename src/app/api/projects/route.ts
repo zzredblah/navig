@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { createProjectSchema, projectQuerySchema } from '@/lib/validations/project';
 import { checkUsage } from '@/lib/usage/checker';
+import { ActivityLogger } from '@/lib/activity/logger';
 import { NextRequest, NextResponse } from 'next/server';
 
 // 프로젝트 목록 조회
@@ -189,6 +190,9 @@ export async function POST(request: NextRequest) {
     if (memberError) {
       console.error('[Projects API] 멤버 추가 실패:', memberError);
     }
+
+    // 활동 로그 기록
+    await ActivityLogger.logProjectCreated(project.id, user.id, project.title);
 
     return NextResponse.json({
       message: '프로젝트가 생성되었습니다',

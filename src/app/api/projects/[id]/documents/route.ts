@@ -1,6 +1,7 @@
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { createDocumentSchema, documentQuerySchema } from '@/lib/validations/document';
 import { NextRequest, NextResponse } from 'next/server';
+import { ActivityLogger } from '@/lib/activity/logger';
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -149,6 +150,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         content: content || {},
         created_by: user.id,
       });
+
+    // 활동 로그 기록
+    await ActivityLogger.logDocumentCreated(
+      projectId,
+      user.id,
+      document.id,
+      title
+    );
 
     return NextResponse.json(
       { message: '문서가 생성되었습니다', data: document },

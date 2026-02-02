@@ -32,6 +32,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatDuration } from '@/types/video';
 import type { WatermarkSettings } from '@/types/watermark';
+import { sanitizeStreamUrl } from '@/lib/cloudflare/stream';
 
 interface VideoPlayerProps {
   // HLS URL (Cloudflare Stream) 또는 MP4 URL
@@ -67,6 +68,7 @@ export function VideoPlayer({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationFrameRef = useRef<number | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const playPromiseRef = useRef<Promise<void> | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -96,7 +98,10 @@ export function VideoPlayer({
       hlsRef.current = null;
     }
 
-    if (isHlsStream && effectiveHlsSrc) {
+    // HLS URL 정리 (잘못된 URL 형식 수정)
+    const cleanHlsSrc = isHlsStream && effectiveHlsSrc ? sanitizeStreamUrl(effectiveHlsSrc) : null;
+
+    if (isHlsStream && cleanHlsSrc) {
       if (Hls.isSupported()) {
         setIsHlsSupported(true);
         const hls = new Hls({
@@ -108,7 +113,7 @@ export function VideoPlayer({
           abrBandWidthUpFactor: 0.7,
         });
 
-        hls.loadSource(effectiveHlsSrc);
+        hls.loadSource(cleanHlsSrc);
         hls.attachMedia(video);
 
         hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
@@ -150,7 +155,7 @@ export function VideoPlayer({
         hlsRef.current = hls;
       } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
         // Safari 네이티브 HLS 지원
-        video.src = effectiveHlsSrc;
+        video.src = cleanHlsSrc;
         setIsHlsSupported(true);
       }
     } else {
@@ -316,12 +321,33 @@ export function VideoPlayer({
   }, [onTimeUpdate]);
 
   // 재생/일시정지 토글
-  const togglePlay = useCallback(() => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
+  const togglePlay = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (isPlaying) {
+      // play() Promise가 진행 중이면 완료될 때까지 기다림
+      if (playPromiseRef.current) {
+        try {
+          await playPromiseRef.current;
+        } catch {
+          // 이미 실패한 Promise 무시
+        }
+        playPromiseRef.current = null;
+      }
+      video.pause();
+    } else {
+      try {
+        playPromiseRef.current = video.play();
+        await playPromiseRef.current;
+      } catch (e) {
+        // AbortError는 무시 (pause()에 의해 중단된 경우)
+        if (e instanceof DOMException && e.name === 'AbortError') {
+          return;
+        }
+        console.error('[VideoPlayer] 재생 실패:', e);
+      } finally {
+        playPromiseRef.current = null;
       }
     }
   }, [isPlaying]);

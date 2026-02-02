@@ -5,34 +5,46 @@
  */
 
 import { useState } from 'react';
-import { Send, Loader2, Clock, Pencil, X, ImageIcon, AlertTriangle } from 'lucide-react';
+import { Send, Loader2, Clock, Pencil, X, ImageIcon, AlertTriangle, Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { formatTimestamp } from '@/types/feedback';
 import { FeedbackTemplate } from '@/types/feedback-template';
 import { FeedbackTemplateSelect } from './FeedbackTemplateSelect';
 import { FeedbackTemplateManager } from './FeedbackTemplateManager';
+import { VoiceFeedbackButton } from './VoiceFeedbackButton';
+import { toast } from 'sonner';
 
 interface FeedbackFormProps {
   videoId: string;
+  versionId?: string;
   currentTime: number;
   onSubmit: (content: string, timestamp: number, drawingImage?: string, isUrgent?: boolean) => Promise<void>;
   onDrawingModeToggle?: () => void;
   drawingImage?: string | null;
   onClearDrawing?: () => void;
   disabled?: boolean;
+  onVoiceFeedbackSuccess?: () => void;
 }
 
 export function FeedbackForm({
   videoId,
+  versionId,
   currentTime,
   onSubmit,
   onDrawingModeToggle,
   drawingImage,
   onClearDrawing,
   disabled,
+  onVoiceFeedbackSuccess,
 }: FeedbackFormProps) {
   const [content, setContent] = useState('');
   const [isUrgent, setIsUrgent] = useState(false);
@@ -80,26 +92,47 @@ export function FeedbackForm({
           <span>현재 위치: {formatTimestamp(currentTime)}</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <FeedbackTemplateSelect
             onSelect={handleTemplateSelect}
             onManageClick={() => setIsTemplateManagerOpen(true)}
             refreshTrigger={templateRefreshTrigger}
           />
+          {versionId && (
+            <VoiceFeedbackButton
+              versionId={versionId}
+              currentTime={currentTime}
+              onSuccess={() => {
+                toast.success('음성 피드백이 추가되었습니다.');
+                onVoiceFeedbackSuccess?.();
+              }}
+              onError={(error) => toast.error(error)}
+              disabled={disabled}
+              iconOnly
+            />
+          )}
           {onDrawingModeToggle && (
-            <Button
-              type="button"
-              variant={disabled ? 'default' : 'outline'}
-              size="sm"
-              onClick={onDrawingModeToggle}
-              className={disabled
-                ? 'bg-primary-600 hover:bg-primary-700 text-white'
-                : 'text-primary-600 border-primary-200 hover:bg-primary-50'
-              }
-            >
-              <Pencil className="h-4 w-4 mr-1" />
-              {disabled ? '그리기 중...' : '그리기'}
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant={disabled ? 'default' : 'outline'}
+                    size="icon"
+                    onClick={onDrawingModeToggle}
+                    className={disabled
+                      ? 'h-8 w-8 bg-primary-600 hover:bg-primary-700 text-white'
+                      : 'h-8 w-8 text-primary-600 border-primary-200 hover:bg-primary-50'
+                    }
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{disabled ? '그리기 모드 종료' : '화면에 그리기'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
       </div>

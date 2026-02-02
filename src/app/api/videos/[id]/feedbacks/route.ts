@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 import { NotificationService } from '@/lib/notifications/service';
+import { ActivityLogger } from '@/lib/activity/logger';
 
 // 쿼리 파라미터 스키마
 const querySchema = z.object({
@@ -202,7 +203,7 @@ export async function POST(
     // 영상 정보 조회 (권한 확인용)
     const { data: video, error: videoError } = await adminClient
       .from('video_versions')
-      .select('id, project_id')
+      .select('id, project_id, original_filename, version_name')
       .eq('id', videoId)
       .single();
 
@@ -235,6 +236,9 @@ export async function POST(
         { status: 403 }
       );
     }
+
+    // 영상 제목 결정
+    const videoTitle = video.version_name || video.original_filename || '영상';
 
     // 피드백 생성
     const { data: feedback, error: insertError } = await adminClient
@@ -290,6 +294,15 @@ export async function POST(
       console.error('[Feedbacks POST] 알림 생성 실패:', notifError);
       // 알림 실패는 메인 로직에 영향 없음
     }
+
+    // 활동 로그 기록
+    await ActivityLogger.logFeedbackCreated(
+      video.project_id,
+      user.id,
+      feedback.id,
+      videoTitle,
+      is_urgent
+    );
 
     return NextResponse.json({ feedback }, { status: 201 });
   } catch (error) {

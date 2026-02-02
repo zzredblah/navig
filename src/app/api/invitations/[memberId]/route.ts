@@ -4,6 +4,7 @@
 
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { ActivityLogger } from '@/lib/activity/logger';
 
 type RouteParams = Promise<{ memberId: string }>;
 
@@ -63,12 +64,25 @@ export async function POST(
       );
     }
 
-    // 프로젝트 정보 가져오기
+    // 프로젝트 정보 및 사용자 정보 가져오기
     const { data: project } = await adminClient
       .from('projects')
       .select('title')
       .eq('id', member.project_id)
       .single();
+
+    const { data: profile } = await adminClient
+      .from('profiles')
+      .select('name')
+      .eq('id', user.id)
+      .single();
+
+    // 활동 로그 기록
+    await ActivityLogger.logMemberJoined(
+      member.project_id,
+      user.id,
+      profile?.name || user.email || '멤버'
+    );
 
     return NextResponse.json({
       message: '초대를 수락했습니다',

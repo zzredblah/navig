@@ -23,6 +23,9 @@ const pathLabels: Record<string, string> = {
   feedbacks: '피드백',
   compare: '버전 비교',
   boards: '레퍼런스 보드',
+  analytics: '분석',
+  community: '커뮤니티',
+  timeline: '타임라인',
 };
 
 export interface BreadcrumbItem {

@@ -19,6 +19,9 @@ import {
   ChevronDown,
   LogOut,
   Check,
+  Clock,
+  BarChart3,
+  MessageSquare,
 } from 'lucide-react';
 import { SidebarPlanBadge } from '@/components/subscription/SidebarPlanBadge';
 import { Button } from '@/components/ui/button';
@@ -87,9 +90,28 @@ const menuItems: MenuItem[] = [
     icon: Users,
   },
   {
+    title: '타임라인',
+    href: '/timeline',
+    projectHref: '/projects/{id}/timeline',
+    icon: Clock,
+    projectOnly: true,
+  },
+  {
     title: '알림',
     href: '/notifications',
     icon: Bell,
+    alwaysGlobal: true,
+  },
+  {
+    title: '분석',
+    href: '/analytics',
+    icon: BarChart3,
+    alwaysGlobal: true,
+  },
+  {
+    title: '커뮤니티',
+    href: '/community',
+    icon: MessageSquare,
     alwaysGlobal: true,
   },
 ];

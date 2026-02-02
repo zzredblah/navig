@@ -651,6 +651,11 @@ export async function enableDownload(videoId: string): Promise<void> {
 /**
  * Customer 서브도메인 가져오기
  * Stream URL에 사용되는 고유 서브도메인
+ *
+ * 환경 변수 형식:
+ * - 권장: "w1ib0o14v27brt53" (서브도메인만)
+ * - 호환: "customer-w1ib0o14v27brt53.cloudflarestream.com" (전체 도메인도 처리)
+ * - 호환: 중복된 도메인도 처리
  */
 function getCustomerSubdomain(): string {
   const subdomain = process.env.CLOUDFLARE_STREAM_SUBDOMAIN;
@@ -659,7 +664,25 @@ function getCustomerSubdomain(): string {
       'CLOUDFLARE_STREAM_SUBDOMAIN 환경 변수가 설정되지 않았습니다.'
     );
   }
-  return subdomain;
+
+  // 정규식으로 서브도메인 ID만 추출
+  // 패턴: 알파벳 소문자 + 숫자로 이루어진 16자 문자열
+  // 예: "customer-w1ib0o14v27brt53.cloudflarestream.com" → "w1ib0o14v27brt53"
+  // 예: "w1ib0o14v27brt53" → "w1ib0o14v27brt53"
+  // 예: "customer-customer-w1ib0o14v27brt53.cloudflarestream.com.cloudflarestream.com" → "w1ib0o14v27brt53"
+  const match = subdomain.match(/[a-z0-9]{16}/);
+  if (match) {
+    return match[0];
+  }
+
+  // 정규식 매칭 실패 시 기존 방식으로 폴백
+  let cleaned = subdomain;
+  // 모든 .cloudflarestream.com 제거
+  cleaned = cleaned.replace(/\.cloudflarestream\.com/g, '');
+  // 모든 customer- 접두사 제거
+  cleaned = cleaned.replace(/customer-/g, '');
+
+  return cleaned;
 }
 
 /**
@@ -671,6 +694,96 @@ export function isStreamConfigured(): boolean {
     process.env.CLOUDFLARE_STREAM_API_TOKEN &&
     process.env.CLOUDFLARE_STREAM_SUBDOMAIN
   );
+}
+
+/**
+ * 잘못된 Stream URL 정리
+ *
+ * DB에 저장된 잘못된 URL을 올바른 형식으로 변환합니다.
+ * 예: "customer-customer-xxx.cloudflarestream.com.cloudflarestream.com/..."
+ *   → "customer-xxx.cloudflarestream.com/..."
+ *
+ * 이 함수는 클라이언트/서버 양쪽에서 사용 가능합니다.
+ * 환경 변수 없이도 URL에서 직접 정보를 추출합니다.
+ */
+export function sanitizeStreamUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+
+  // 이미 올바른 형식인지 빠르게 체크
+  // 올바른 형식: https://customer-{16chars}.cloudflarestream.com/{32chars}/...
+  const validPattern = /^https:\/\/customer-[a-z0-9]{16}\.cloudflarestream\.com\/[a-f0-9]{32}\//;
+  if (validPattern.test(url)) {
+    return url;
+  }
+
+  // URL에서 video ID 추출 (32자 hex string)
+  const videoIdMatch = url.match(/\/([a-f0-9]{32})/);
+  if (!videoIdMatch) {
+    // video ID를 찾을 수 없으면 원본 반환
+    return url;
+  }
+  const videoId = videoIdMatch[1];
+
+  // 서브도메인 추출
+  // 서브도메인은 16자의 소문자+숫자 조합이며, 숫자가 포함되어 있음
+  // "customer"는 숫자가 없으므로 제외됨
+  let subdomain: string | null = null;
+
+  // 방법 1: URL에서 직접 추출 (숫자가 포함된 16자 패턴)
+  // customer- 뒤에 오는 모든 16자 alphanumeric 패턴 중 숫자가 포함된 것
+  const allMatches = url.matchAll(/customer-([a-z0-9]{16})/g);
+  for (const match of allMatches) {
+    const candidate = match[1];
+    // "customer"로 시작하면 건너뜀 (customer-customer-... 케이스)
+    if (candidate.startsWith('customer')) continue;
+    // 숫자가 포함되어 있으면 유효한 서브도메인
+    if (/\d/.test(candidate)) {
+      subdomain = candidate;
+      break;
+    }
+  }
+
+  // 방법 2: 정규식 매칭 실패 시 문자열 처리로 추출
+  if (!subdomain) {
+    // .cloudflarestream.com 이전의 모든 텍스트에서 추출
+    const domainPart = url.split('.cloudflarestream.com')[0];
+    // customer- 제거하고 남은 부분에서 16자 패턴 찾기
+    const cleaned = domainPart.replace(/https?:\/\//g, '').replace(/customer-/g, '');
+    // 숫자가 포함된 16자 패턴 찾기
+    const match = cleaned.match(/([a-z0-9]{16})/);
+    if (match && /\d/.test(match[1])) {
+      subdomain = match[1];
+    }
+  }
+
+  // 방법 3: 환경 변수에서 가져오기 (서버 사이드 전용)
+  if (!subdomain) {
+    try {
+      subdomain = getCustomerSubdomain();
+    } catch {
+      // 환경변수 없으면 원본 반환
+      return url;
+    }
+  }
+
+  if (!subdomain) {
+    return url;
+  }
+
+  // URL 타입에 따라 올바른 URL 생성
+  if (url.includes('/manifest/video.m3u8')) {
+    return `https://customer-${subdomain}.cloudflarestream.com/${videoId}/manifest/video.m3u8`;
+  } else if (url.includes('/manifest/video.mpd')) {
+    return `https://customer-${subdomain}.cloudflarestream.com/${videoId}/manifest/video.mpd`;
+  } else if (url.includes('/downloads/')) {
+    return `https://customer-${subdomain}.cloudflarestream.com/${videoId}/downloads/default.mp4`;
+  } else if (url.includes('/thumbnails/')) {
+    return `https://customer-${subdomain}.cloudflarestream.com/${videoId}/thumbnails/thumbnail.jpg`;
+  } else if (url.includes('/iframe')) {
+    return `https://customer-${subdomain}.cloudflarestream.com/${videoId}/iframe`;
+  }
+
+  return url;
 }
 
 // ============================================

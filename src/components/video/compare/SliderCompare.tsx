@@ -2,10 +2,11 @@
 
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { GripVertical } from 'lucide-react';
+import Hls from 'hls.js';
 
 interface SliderCompareProps {
-  leftVideo: { url: string; label: string };
-  rightVideo: { url: string; label: string };
+  leftVideo: { url: string; label: string; isHls?: boolean };
+  rightVideo: { url: string; label: string; isHls?: boolean };
   currentTime: number;
   isPlaying: boolean;
   onTimeUpdate: (time: number) => void;
@@ -41,24 +42,36 @@ export function SliderCompare({
   // 재생 중 상태 추적 (seek와 구분하기 위함)
   const isPlayingRef = useRef(false);
   const lastSyncTimeRef = useRef(0);
+  // play() Promise 추적 (play/pause 충돌 방지)
+  const playPromisesRef = useRef<Map<HTMLVideoElement, Promise<void>>>(new Map());
 
-  // 비디오 로드 상태 추적
+  // HLS 인스턴스 추적
+  const leftHlsRef = useRef<Hls | null>(null);
+  const rightHlsRef = useRef<Hls | null>(null);
+
+  // 비디오 로드 상태 추적 (HLS 지원 포함)
   useEffect(() => {
     const leftVid = leftVideoRef.current;
     const rightVid = rightVideoRef.current;
     if (!leftVid || !rightVid) return;
 
-    console.log('[SliderCompare] 비디오 URL:', { left: leftVideo.url, right: rightVideo.url });
-
     // 비디오 준비 상태 초기화
     setVideosReady({ left: false, right: false });
 
+    // 이전 HLS 인스턴스 정리
+    if (leftHlsRef.current) {
+      leftHlsRef.current.destroy();
+      leftHlsRef.current = null;
+    }
+    if (rightHlsRef.current) {
+      rightHlsRef.current.destroy();
+      rightHlsRef.current = null;
+    }
+
     const handleLeftCanPlay = () => {
-      console.log('[SliderCompare] 왼쪽 비디오 준비됨');
       setVideosReady((prev) => ({ ...prev, left: true }));
     };
     const handleRightCanPlay = () => {
-      console.log('[SliderCompare] 오른쪽 비디오 준비됨');
       setVideosReady((prev) => ({ ...prev, right: true }));
     };
 
@@ -72,12 +85,38 @@ export function SliderCompare({
     leftVid.addEventListener('error', handleError('왼쪽'));
     rightVid.addEventListener('error', handleError('오른쪽'));
 
-    // URL이 변경되면 비디오 다시 로드
+    // 왼쪽 비디오 로드 (HLS 또는 일반)
     if (leftVideo.url) {
-      leftVid.load();
+      if (leftVideo.isHls && Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(leftVideo.url);
+        hls.attachMedia(leftVid);
+        leftHlsRef.current = hls;
+      } else if (leftVideo.isHls && leftVid.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari 네이티브 HLS 지원
+        leftVid.src = leftVideo.url;
+        leftVid.load();
+      } else {
+        leftVid.src = leftVideo.url;
+        leftVid.load();
+      }
     }
+
+    // 오른쪽 비디오 로드 (HLS 또는 일반)
     if (rightVideo.url) {
-      rightVid.load();
+      if (rightVideo.isHls && Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(rightVideo.url);
+        hls.attachMedia(rightVid);
+        rightHlsRef.current = hls;
+      } else if (rightVideo.isHls && rightVid.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari 네이티브 HLS 지원
+        rightVid.src = rightVideo.url;
+        rightVid.load();
+      } else {
+        rightVid.src = rightVideo.url;
+        rightVid.load();
+      }
     }
 
     // 이미 로드된 경우 체크
@@ -89,8 +128,17 @@ export function SliderCompare({
       rightVid.removeEventListener('canplay', handleRightCanPlay);
       leftVid.removeEventListener('error', handleError('왼쪽'));
       rightVid.removeEventListener('error', handleError('오른쪽'));
+      // HLS 정리
+      if (leftHlsRef.current) {
+        leftHlsRef.current.destroy();
+        leftHlsRef.current = null;
+      }
+      if (rightHlsRef.current) {
+        rightHlsRef.current.destroy();
+        rightHlsRef.current = null;
+      }
     };
-  }, [leftVideo.url, rightVideo.url]);
+  }, [leftVideo.url, rightVideo.url, leftVideo.isHls, rightVideo.isHls]);
 
   // 외부에서 시간 변경 시 (seek) - 재생 중이 아닐 때만 동기화
   useEffect(() => {
@@ -110,30 +158,56 @@ export function SliderCompare({
     }
   }, [currentTime, syncEnabled]);
 
+  // 안전한 재생 함수 (play/pause 충돌 방지)
+  const safePlay = async (video: HTMLVideoElement) => {
+    try {
+      const playPromise = video.play();
+      playPromisesRef.current.set(video, playPromise);
+      await playPromise;
+    } catch (e) {
+      // AbortError는 무시 (pause()에 의해 중단된 경우)
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        return;
+      }
+      console.error('[SliderCompare] 재생 실패:', e);
+    } finally {
+      playPromisesRef.current.delete(video);
+    }
+  };
+
+  // 안전한 정지 함수 (진행 중인 play() 완료 후 정지)
+  const safePause = async (video: HTMLVideoElement) => {
+    const playPromise = playPromisesRef.current.get(video);
+    if (playPromise) {
+      try {
+        await playPromise;
+      } catch {
+        // 이미 실패한 Promise 무시
+      }
+      playPromisesRef.current.delete(video);
+    }
+    video.pause();
+  };
+
   // 재생/정지 동기화
   useEffect(() => {
     const leftVid = leftVideoRef.current;
     const rightVid = rightVideoRef.current;
     if (!leftVid || !rightVid) return;
 
-    console.log('[SliderCompare] 재생 상태 변경:', { isPlaying, videosReady });
-
     isPlayingRef.current = isPlaying;
 
     if (isPlaying) {
       // 비디오가 준비되지 않았으면 재시도 예약
       if (!videosReady.left || !videosReady.right) {
-        console.log('[SliderCompare] 비디오 로딩 중... 준비 상태:', videosReady);
-
         // 0.5초 후 재시도
         const retryTimer = setTimeout(() => {
           if (leftVid.readyState >= 3 && rightVid.readyState >= 3) {
-            console.log('[SliderCompare] 비디오 준비됨, 재생 시작');
             if (syncEnabled) {
               rightVid.currentTime = leftVid.currentTime;
             }
-            leftVid.play().catch((e) => console.error('[SliderCompare] 재생 실패:', e));
-            rightVid.play().catch((e) => console.error('[SliderCompare] 재생 실패:', e));
+            safePlay(leftVid);
+            safePlay(rightVid);
           }
         }, 500);
 
@@ -145,13 +219,11 @@ export function SliderCompare({
         rightVid.currentTime = leftVid.currentTime;
       }
 
-      console.log('[SliderCompare] 재생 시작');
-      leftVid.play().catch((e) => console.error('[SliderCompare] 왼쪽 비디오 재생 실패:', e));
-      rightVid.play().catch((e) => console.error('[SliderCompare] 오른쪽 비디오 재생 실패:', e));
+      safePlay(leftVid);
+      safePlay(rightVid);
     } else {
-      console.log('[SliderCompare] 일시 정지');
-      leftVid.pause();
-      rightVid.pause();
+      safePause(leftVid);
+      safePause(rightVid);
     }
   }, [isPlaying, syncEnabled, videosReady]);
 
@@ -282,19 +354,17 @@ export function SliderCompare({
       ref={containerRef}
       className="relative w-full aspect-video bg-black overflow-hidden select-none"
     >
-      {/* 우측 영상 (전체) */}
+      {/* 우측 영상 (전체) - src는 useEffect에서 설정 */}
       <video
         ref={rightVideoRef}
-        src={rightVideo.url}
         className="absolute inset-0 w-full h-full object-contain"
         muted={rightMuted}
         playsInline
       />
 
-      {/* 좌측 영상 (클리핑) */}
+      {/* 좌측 영상 (클리핑) - src는 useEffect에서 설정 */}
       <video
         ref={leftVideoRef}
-        src={leftVideo.url}
         className="absolute inset-0 w-full h-full object-contain"
         style={{ clipPath: `inset(0 ${100 - sliderPosition}% 0 0)` }}
         muted={leftMuted}

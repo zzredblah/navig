@@ -45,6 +45,10 @@ videos/
 src/
 ├── board-thumbnails/        # 보드 썸네일
 │   └── {board_id}.jpg
+├── board-media/             # 보드 미디어 (이미지/영상)
+│   └── {board_id}/
+│       └── {user_id}/
+│           └── {timestamp}-{random}-{filename}
 ├── chat-attachments/        # 채팅 첨부파일
 │   └── {user_id}/
 │       └── {timestamp}-{filename}

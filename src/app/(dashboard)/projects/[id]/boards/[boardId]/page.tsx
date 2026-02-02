@@ -395,44 +395,70 @@ export default function BoardDetailPage({
     videoInputRef.current?.click();
   }, []);
 
-  // 파일 업로드 처리 (원본 크기 로드)
+  // 파일 업로드 처리 (R2에 업로드 후 영구 URL 사용)
+  const [isUploading, setIsUploading] = useState(false);
+
   const handleFileUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'video') => {
       const file = e.target.files?.[0];
-      if (!file || !board) return;
+      if (!file || !board || isUploading) return;
 
-      // 파일 크기 가져오기
-      const dimensions = type === 'image'
-        ? await getImageDimensions(file)
-        : await getVideoDimensions(file);
+      setIsUploading(true);
 
-      const url = URL.createObjectURL(file);
+      try {
+        // 파일 크기 가져오기
+        const dimensions = type === 'image'
+          ? await getImageDimensions(file)
+          : await getVideoDimensions(file);
 
-      const newElement: BoardElement = {
-        id: crypto.randomUUID(),
-        board_id: board.id,
-        type,
-        position_x: 100 + Math.random() * 200,
-        position_y: 100 + Math.random() * 200,
-        width: dimensions.width,
-        height: dimensions.height,
-        rotation: 0,
-        z_index: 0,
-        locked: false,
-        content: {
-          url,
-          original_filename: file.name,
-        },
-        style: {},
-        created_by: '',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
+        // R2에 파일 업로드
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('type', type);
 
-      addElement(newElement);
-      e.target.value = '';
+        const response = await fetch(`/api/boards/${board.id}/media`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || '파일 업로드에 실패했습니다');
+        }
+
+        const { url } = await response.json();
+
+        const newElement: BoardElement = {
+          id: crypto.randomUUID(),
+          board_id: board.id,
+          type,
+          position_x: 100 + Math.random() * 200,
+          position_y: 100 + Math.random() * 200,
+          width: dimensions.width,
+          height: dimensions.height,
+          rotation: 0,
+          z_index: 0,
+          locked: false,
+          content: {
+            url,
+            original_filename: file.name,
+          },
+          style: {},
+          created_by: '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        addElement(newElement);
+      } catch (error) {
+        console.error('파일 업로드 실패:', error);
+        alert(error instanceof Error ? error.message : '파일 업로드에 실패했습니다');
+      } finally {
+        setIsUploading(false);
+        e.target.value = '';
+      }
     },
-    [board, addElement]
+    [board, addElement, isUploading]
   );
 
   // 로딩 중일 때
@@ -498,6 +524,17 @@ export default function BoardDetailPage({
                 <p className="text-sm text-gray-500">
                   {!BoardCanvas ? '캔버스 로딩 중...' : '크기 계산 중...'}
                 </p>
+              </div>
+            </div>
+          )}
+
+          {/* 업로드 중 오버레이 */}
+          {isUploading && (
+            <div className="absolute inset-0 bg-black/30 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 shadow-xl text-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary-600 mx-auto mb-3" />
+                <p className="text-sm font-medium text-gray-900">파일 업로드 중...</p>
+                <p className="text-xs text-gray-500 mt-1">잠시만 기다려주세요</p>
               </div>
             </div>
           )}

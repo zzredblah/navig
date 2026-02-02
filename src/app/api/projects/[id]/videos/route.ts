@@ -22,6 +22,7 @@ import {
   MAX_VIDEO_FILE_SIZE,
 } from '@/types/video';
 import { z } from 'zod';
+import { ActivityLogger } from '@/lib/activity/logger';
 
 // 요청 검증 스키마
 const createVideoSchema = z.object({
@@ -326,6 +327,14 @@ async function handleStreamUpload({
       );
     }
 
+    // 활동 로그 기록
+    await ActivityLogger.logVideoUploaded(
+      projectId,
+      userId,
+      video.id,
+      versionName || originalFilename
+    );
+
     return NextResponse.json(
       {
         video,
@@ -446,6 +455,14 @@ async function handleR2Upload({
       { status: 500 }
     );
   }
+
+  // 활동 로그 기록
+  await ActivityLogger.logVideoUploaded(
+    projectId,
+    userId,
+    video.id,
+    versionName || originalFilename
+  );
 
   return NextResponse.json(
     {

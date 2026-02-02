@@ -1,7 +1,7 @@
 # NAVIG 오류 방지 가이드 (Error Prevention Guide)
 
-**버전:** 2.6
-**최종 수정:** 2026-01-29
+**버전:** 2.7
+**최종 수정:** 2026-02-02
 **목적:** 개발 중 발생한 오류와 해결책을 문서화하여 재발 방지
 
 ---
@@ -1699,3 +1699,220 @@ const canUseFeature = isSubscriptionActive(subscription) &&
 - [ ] 숫자 필드 기본값 설정
 - [ ] 구독 상태 종합 판단 함수 사용 (§24.2)
 - [ ] 시간 비교는 UTC 기준
+
+### 비디오 플레이어 개발 시 (§26)
+- [ ] play/pause 호출 시 safePlay/safePause 패턴 사용 (§26.1)
+- [ ] play() Promise 추적 및 완료 대기 후 pause()
+- [ ] AbortError 무시 처리
+- [ ] HLS 인스턴스 cleanup 시 destroy() 호출
+
+### 영상 비교 기능 개발 시 (§27)
+- [ ] 재생 전 두 영상 시간 동기화 (§27.1)
+- [ ] timeUpdate 이벤트 throttle 적용 (250ms 권장)
+- [ ] seeked 이벤트로 동기화 보정
+- [ ] HLS 스트리밍 지원 (isHls 플래그)
+
+---
+
+## 26. 비디오 플레이어 play/pause 충돌 방지
+
+### 26.1 문제: play()와 pause()가 빠르게 호출될 때 AbortError
+
+**원인:**
+- `video.play()`는 Promise를 반환함
+- Promise가 완료되기 전에 `video.pause()`를 호출하면 AbortError 발생
+- 특히 재생/정지 버튼을 빠르게 연타할 때 발생
+
+**에러 메시지:**
+```
+DOMException: The play() request was interrupted by a call to pause()
+```
+
+**해결책:**
+```typescript
+// ❌ Bad: 직접 play/pause 호출
+const handlePlayPause = () => {
+  if (video.paused) {
+    video.play();  // Promise 반환, 완료 전에 pause 호출 시 에러
+  } else {
+    video.pause();
+  }
+};
+
+// ✅ Good: Promise 추적 + 안전한 호출
+const playPromisesRef = useRef<Map<HTMLVideoElement, Promise<void>>>(new Map());
+
+const safePlay = async (video: HTMLVideoElement) => {
+  try {
+    const playPromise = video.play();
+    playPromisesRef.current.set(video, playPromise);
+    await playPromise;
+  } catch (e) {
+    // AbortError는 무시 (pause()에 의해 중단된 경우)
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      return;
+    }
+    console.error('[Video] 재생 실패:', e);
+  } finally {
+    playPromisesRef.current.delete(video);
+  }
+};
+
+const safePause = async (video: HTMLVideoElement) => {
+  // 진행 중인 play() Promise가 있으면 완료 대기
+  const playPromise = playPromisesRef.current.get(video);
+  if (playPromise) {
+    try {
+      await playPromise;
+    } catch {
+      // 이미 실패한 Promise 무시
+    }
+    playPromisesRef.current.delete(video);
+  }
+  video.pause();
+};
+
+// 사용
+const handlePlayPause = async () => {
+  if (video.paused) {
+    await safePlay(video);
+  } else {
+    await safePause(video);
+  }
+};
+```
+
+**규칙:**
+- `video.play()` 직접 호출 금지 → `safePlay()` 사용
+- `video.pause()` 직접 호출 금지 → `safePause()` 사용
+- AbortError는 정상 동작이므로 무시
+- 여러 비디오 동시 제어 시 Map으로 각각 추적
+
+---
+
+## 27. 영상 비교 시간 동기화
+
+### 27.1 문제: 두 영상의 재생 시간이 점점 벌어짐 (드리프트)
+
+**원인:**
+- 두 영상의 프레임 레이트, 버퍼링 상태가 다름
+- 한 영상이 버퍼링되면 다른 영상은 계속 재생
+- 미세한 차이가 누적되어 점점 벌어짐
+
+**해결책:**
+```typescript
+// ✅ Good: 재생 전 동기화 + 주기적 보정
+
+// 1. 재생 시작 전 시간 동기화
+useEffect(() => {
+  if (isPlaying) {
+    // 시간 차이가 0.1초 이상이면 동기화
+    if (syncEnabled && Math.abs(leftVid.currentTime - rightVid.currentTime) > 0.1) {
+      rightVid.currentTime = leftVid.currentTime;
+    }
+    safePlay(leftVid);
+    safePlay(rightVid);
+  } else {
+    safePause(leftVid);
+    safePause(rightVid);
+  }
+}, [isPlaying, syncEnabled]);
+
+// 2. seek 이벤트 시 동기화
+useEffect(() => {
+  const handleSeeked = () => {
+    if (syncEnabled && !isPlayingRef.current) {
+      rightVid.currentTime = leftVid.currentTime;
+    }
+  };
+
+  leftVid.addEventListener('seeked', handleSeeked);
+  return () => leftVid.removeEventListener('seeked', handleSeeked);
+}, [syncEnabled]);
+
+// 3. timeUpdate throttle (불필요한 업데이트 방지)
+useEffect(() => {
+  let lastUpdateTime = 0;
+  const THROTTLE_MS = 250;  // 250ms마다 업데이트
+
+  const handleTimeUpdate = () => {
+    const now = Date.now();
+    if (now - lastUpdateTime >= THROTTLE_MS) {
+      onTimeUpdate(leftVid.currentTime);
+      lastUpdateTime = now;
+    }
+  };
+
+  leftVid.addEventListener('timeupdate', handleTimeUpdate);
+  return () => leftVid.removeEventListener('timeupdate', handleTimeUpdate);
+}, [onTimeUpdate]);
+```
+
+### 27.2 영상 비교 HLS 스트리밍 지원
+
+**문제:** 영상 비교 시 HLS 스트리밍 지원 필요
+
+**해결책:**
+```typescript
+// 비디오 props에 isHls 플래그 추가
+interface CompareProps {
+  leftVideo: { url: string; label: string; isHls?: boolean };
+  rightVideo: { url: string; label: string; isHls?: boolean };
+  // ...
+}
+
+// HLS 인스턴스 관리
+const leftHlsRef = useRef<Hls | null>(null);
+const rightHlsRef = useRef<Hls | null>(null);
+
+useEffect(() => {
+  // 이전 HLS 인스턴스 정리
+  if (leftHlsRef.current) {
+    leftHlsRef.current.destroy();
+    leftHlsRef.current = null;
+  }
+
+  // HLS 로드
+  if (leftVideo.url && leftVideo.isHls && Hls.isSupported()) {
+    const hls = new Hls();
+    hls.loadSource(leftVideo.url);
+    hls.attachMedia(leftVid);
+    leftHlsRef.current = hls;
+  } else if (leftVideo.isHls && leftVid.canPlayType('application/vnd.apple.mpegurl')) {
+    // Safari 네이티브 지원
+    leftVid.src = leftVideo.url;
+    leftVid.load();
+  } else {
+    // 일반 비디오
+    leftVid.src = leftVideo.url;
+    leftVid.load();
+  }
+
+  // cleanup
+  return () => {
+    if (leftHlsRef.current) {
+      leftHlsRef.current.destroy();
+      leftHlsRef.current = null;
+    }
+  };
+}, [leftVideo.url, leftVideo.isHls]);
+```
+
+**규칙:**
+- 영상 비교 컴포넌트는 `isHls` 플래그로 HLS 여부 판단
+- HLS.js 인스턴스는 반드시 cleanup 시 `destroy()` 호출
+- Safari는 네이티브 HLS 지원 먼저 확인
+- 동기화는 왼쪽 영상 기준 (leftVid → rightVid)
+
+---
+
+## 28. 관련 파일 (추가)
+
+| 파일 | 설명 |
+|------|------|
+| `src/components/video/compare/SliderCompare.tsx` | 슬라이더 비교 (HLS + 동기화 패턴) |
+| `src/components/video/compare/WipeCompare.tsx` | 와이프 비교 (HLS + 동기화 패턴) |
+| `src/components/video/compare/SideBySideCompare.tsx` | 좌우 비교 (HLS + 동기화 패턴) |
+| `src/components/video/compare/OverlayCompare.tsx` | 오버레이 비교 (HLS + 동기화 패턴) |
+| `src/components/video/VideoCompareModal.tsx` | 비교 모달 (오디오 개별 제어) |
+| `src/app/(dashboard)/projects/[id]/videos/[videoId]/page.tsx` | 영상 상세 (safePlay/safePause 패턴) |

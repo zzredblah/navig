@@ -27,6 +27,7 @@ import {
 import { FeedbackForm } from './FeedbackForm';
 import { FeedbackItem } from './FeedbackItem';
 import { FeedbackTimeline } from './FeedbackMarker';
+import { FeedbackSummaryButton } from './FeedbackSummaryButton';
 import {
   FeedbackWithAuthor,
   ReplyWithAuthor,
@@ -107,14 +108,12 @@ export function FeedbackPanel({
           table: 'video_feedbacks',
           filter: `video_id=eq.${videoId}`,
         },
-        (payload) => {
-          console.log('[Realtime] 피드백 변경:', payload);
+        () => {
           // 변경 감지 시 목록 새로고침
           fetchFeedbacks();
         }
       )
       .subscribe((status) => {
-        console.log('[Realtime] 구독 상태:', status);
         setIsRealtimeConnected(status === 'SUBSCRIBED');
       });
 
@@ -275,10 +274,10 @@ export function FeedbackPanel({
           </div>
         </div>
 
-        {/* 하단: 필터 + 새로고침 */}
+        {/* 하단: 필터 + AI 요약 + 새로고침 */}
         <div className="flex items-center gap-2">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-full h-8 text-xs">
+            <SelectTrigger className="flex-1 h-8 text-xs">
               <SelectValue placeholder="상태" />
             </SelectTrigger>
             <SelectContent>
@@ -289,6 +288,11 @@ export function FeedbackPanel({
               <SelectItem value="wontfix">수정 안함</SelectItem>
             </SelectContent>
           </Select>
+
+          <FeedbackSummaryButton
+            videoId={videoId}
+            feedbackCount={feedbacks.length}
+          />
 
           <Button
             variant="ghost"
@@ -355,12 +359,14 @@ export function FeedbackPanel({
       <div className="p-3 border-t border-gray-200 bg-gray-50">
         <FeedbackForm
           videoId={videoId}
+          versionId={videoId}
           currentTime={currentTime}
           onSubmit={handleCreateFeedback}
           onDrawingModeToggle={onDrawingModeToggle}
           drawingImage={drawingImage}
           onClearDrawing={onClearDrawing}
           disabled={isDrawingMode}
+          onVoiceFeedbackSuccess={fetchFeedbacks}
         />
       </div>
     </div>

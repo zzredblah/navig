@@ -2,6 +2,7 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { addMemberSchema } from '@/lib/validations/project';
 import { NextRequest, NextResponse } from 'next/server';
 import { NotificationService } from '@/lib/notifications/service';
+import { ActivityLogger } from '@/lib/activity/logger';
 
 type RouteParams = Promise<{ id: string }>;
 
@@ -236,6 +237,14 @@ export async function POST(
       console.error('[Members API] 알림 발송 실패:', notifError);
       // 알림 실패해도 멤버 추가는 성공으로 처리
     }
+
+    // 활동 로그 기록
+    await ActivityLogger.logMemberInvited(
+      id,
+      user.id,
+      validatedData.email,
+      (newMember.profiles as { name?: string })?.name
+    );
 
     return NextResponse.json({
       message: '멤버를 초대했습니다',

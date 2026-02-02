@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 import { NotificationService } from '@/lib/notifications/service';
+import { ActivityLogger } from '@/lib/activity/logger';
 
 // 수정 요청 스키마
 const updateFeedbackSchema = z.object({
@@ -258,6 +259,23 @@ export async function PATCH(
       } catch (notifError) {
         console.error('[Feedback PATCH] 알림 생성 실패:', notifError);
         // 알림 실패는 메인 로직에 영향 없음
+      }
+    }
+
+    // 활동 로그 기록 (상태 변경 시)
+    if (updateData.status) {
+      if (updateData.status === 'resolved') {
+        await ActivityLogger.logFeedbackResolved(
+          existingFeedback.project_id,
+          user.id,
+          feedbackId
+        );
+      } else if (updateData.status === 'open' && existingFeedback.status === 'resolved') {
+        await ActivityLogger.logFeedbackReopened(
+          existingFeedback.project_id,
+          user.id,
+          feedbackId
+        );
       }
     }
 

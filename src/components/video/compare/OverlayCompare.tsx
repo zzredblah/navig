@@ -3,10 +3,11 @@
 import { useRef, useState, useEffect } from 'react';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
+import Hls from 'hls.js';
 
 interface OverlayCompareProps {
-  leftVideo: { url: string; label: string };
-  rightVideo: { url: string; label: string };
+  leftVideo: { url: string; label: string; isHls?: boolean };
+  rightVideo: { url: string; label: string; isHls?: boolean };
   currentTime: number;
   isPlaying: boolean;
   onTimeUpdate: (time: number) => void;
@@ -39,30 +40,72 @@ export function OverlayCompare({
 
   // 재생 중 상태 추적
   const isPlayingRef = useRef(false);
+  // play() Promise 추적 (play/pause 충돌 방지)
+  const playPromisesRef = useRef<Map<HTMLVideoElement, Promise<void>>>(new Map());
 
-  // 비디오 로드 상태 추적
+  // HLS 인스턴스 추적
+  const leftHlsRef = useRef<Hls | null>(null);
+  const rightHlsRef = useRef<Hls | null>(null);
+
+  // 비디오 로드 상태 추적 (HLS 지원 포함)
   useEffect(() => {
     const leftVid = leftVideoRef.current;
     const rightVid = rightVideoRef.current;
     if (!leftVid || !rightVid) return;
 
-    console.log('[Overlay] 비디오 URL:', { left: leftVideo.url, right: rightVideo.url });
     setVideosReady({ left: false, right: false });
 
+    // 이전 HLS 인스턴스 정리
+    if (leftHlsRef.current) {
+      leftHlsRef.current.destroy();
+      leftHlsRef.current = null;
+    }
+    if (rightHlsRef.current) {
+      rightHlsRef.current.destroy();
+      rightHlsRef.current = null;
+    }
+
     const handleLeftCanPlay = () => {
-      console.log('[Overlay] 왼쪽 비디오 준비됨');
       setVideosReady((prev) => ({ ...prev, left: true }));
     };
     const handleRightCanPlay = () => {
-      console.log('[Overlay] 오른쪽 비디오 준비됨');
       setVideosReady((prev) => ({ ...prev, right: true }));
     };
 
     leftVid.addEventListener('canplay', handleLeftCanPlay);
     rightVid.addEventListener('canplay', handleRightCanPlay);
 
-    if (leftVideo.url) leftVid.load();
-    if (rightVideo.url) rightVid.load();
+    // 왼쪽 비디오 로드 (HLS 또는 일반)
+    if (leftVideo.url) {
+      if (leftVideo.isHls && Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(leftVideo.url);
+        hls.attachMedia(leftVid);
+        leftHlsRef.current = hls;
+      } else if (leftVideo.isHls && leftVid.canPlayType('application/vnd.apple.mpegurl')) {
+        leftVid.src = leftVideo.url;
+        leftVid.load();
+      } else {
+        leftVid.src = leftVideo.url;
+        leftVid.load();
+      }
+    }
+
+    // 오른쪽 비디오 로드 (HLS 또는 일반)
+    if (rightVideo.url) {
+      if (rightVideo.isHls && Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(rightVideo.url);
+        hls.attachMedia(rightVid);
+        rightHlsRef.current = hls;
+      } else if (rightVideo.isHls && rightVid.canPlayType('application/vnd.apple.mpegurl')) {
+        rightVid.src = rightVideo.url;
+        rightVid.load();
+      } else {
+        rightVid.src = rightVideo.url;
+        rightVid.load();
+      }
+    }
 
     if (leftVid.readyState >= 3) handleLeftCanPlay();
     if (rightVid.readyState >= 3) handleRightCanPlay();
@@ -70,8 +113,17 @@ export function OverlayCompare({
     return () => {
       leftVid.removeEventListener('canplay', handleLeftCanPlay);
       rightVid.removeEventListener('canplay', handleRightCanPlay);
+      // HLS 정리
+      if (leftHlsRef.current) {
+        leftHlsRef.current.destroy();
+        leftHlsRef.current = null;
+      }
+      if (rightHlsRef.current) {
+        rightHlsRef.current.destroy();
+        rightHlsRef.current = null;
+      }
     };
-  }, [leftVideo.url, rightVideo.url]);
+  }, [leftVideo.url, rightVideo.url, leftVideo.isHls, rightVideo.isHls]);
 
   // 외부에서 시간 변경 시 (seek) - 재생 중이 아닐 때만 동기화
   useEffect(() => {
@@ -88,23 +140,52 @@ export function OverlayCompare({
     }
   }, [currentTime, syncEnabled]);
 
+  // 안전한 재생 함수 (play/pause 충돌 방지)
+  const safePlay = async (video: HTMLVideoElement) => {
+    try {
+      const playPromise = video.play();
+      playPromisesRef.current.set(video, playPromise);
+      await playPromise;
+    } catch (e) {
+      // AbortError는 무시 (pause()에 의해 중단된 경우)
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        return;
+      }
+      console.error('[Overlay] 재생 실패:', e);
+    } finally {
+      playPromisesRef.current.delete(video);
+    }
+  };
+
+  // 안전한 정지 함수 (진행 중인 play() 완료 후 정지)
+  const safePause = async (video: HTMLVideoElement) => {
+    const playPromise = playPromisesRef.current.get(video);
+    if (playPromise) {
+      try {
+        await playPromise;
+      } catch {
+        // 이미 실패한 Promise 무시
+      }
+      playPromisesRef.current.delete(video);
+    }
+    video.pause();
+  };
+
   // 재생/정지 동기화
   useEffect(() => {
     const leftVid = leftVideoRef.current;
     const rightVid = rightVideoRef.current;
     if (!leftVid || !rightVid) return;
 
-    console.log('[Overlay] 재생 상태:', { isPlaying, videosReady });
     isPlayingRef.current = isPlaying;
 
     if (isPlaying) {
       if (!videosReady.left || !videosReady.right) {
-        console.log('[Overlay] 비디오 로딩 중...');
         const retryTimer = setTimeout(() => {
           if (leftVid.readyState >= 3 && rightVid.readyState >= 3) {
             if (syncEnabled) rightVid.currentTime = leftVid.currentTime;
-            leftVid.play().catch((e) => console.error('[Overlay] 재생 실패:', e));
-            rightVid.play().catch((e) => console.error('[Overlay] 재생 실패:', e));
+            safePlay(leftVid);
+            safePlay(rightVid);
           }
         }, 500);
         return () => clearTimeout(retryTimer);
@@ -113,11 +194,11 @@ export function OverlayCompare({
       if (syncEnabled && Math.abs(leftVid.currentTime - rightVid.currentTime) > 0.1) {
         rightVid.currentTime = leftVid.currentTime;
       }
-      leftVid.play().catch((e) => console.error('[Overlay] 재생 실패:', e));
-      rightVid.play().catch((e) => console.error('[Overlay] 재생 실패:', e));
+      safePlay(leftVid);
+      safePlay(rightVid);
     } else {
-      leftVid.pause();
-      rightVid.pause();
+      safePause(leftVid);
+      safePause(rightVid);
     }
   }, [isPlaying, syncEnabled, videosReady]);
 
@@ -171,19 +252,17 @@ export function OverlayCompare({
 
   return (
     <div className="relative w-full aspect-video bg-black overflow-hidden">
-      {/* 좌측 영상 (베이스) */}
+      {/* 좌측 영상 (베이스) - src는 useEffect에서 설정 */}
       <video
         ref={leftVideoRef}
-        src={leftVideo.url}
         className="absolute inset-0 w-full h-full object-contain pointer-events-none"
         muted={leftMuted}
         playsInline
       />
 
-      {/* 우측 영상 (오버레이) */}
+      {/* 우측 영상 (오버레이) - src는 useEffect에서 설정 */}
       <video
         ref={rightVideoRef}
-        src={rightVideo.url}
         className="absolute inset-0 w-full h-full object-contain transition-opacity duration-150 pointer-events-none"
         style={{ opacity }}
         muted={rightMuted}

@@ -57,6 +57,7 @@ import { VideoVersionWithUploader, formatDuration } from '@/types/video';
 import { cn } from '@/lib/utils';
 import type { WatermarkSettings } from '@/types/watermark';
 import { DEFAULT_WATERMARK_SETTINGS } from '@/types/watermark';
+import { sanitizeStreamUrl } from '@/lib/cloudflare/stream';
 
 type ModalMode = 'direct' | 'select';
 type CompareMode = 'slider' | 'side-by-side' | 'overlay' | 'wipe';
@@ -121,6 +122,32 @@ export function VideoCompareModal({
   // 직접 전달된 영상 또는 선택된 영상
   const leftVideo = mode === 'direct' ? directVideo1 : versions.find((v) => v.id === leftVersionId);
   const rightVideo = mode === 'direct' ? directVideo2 : versions.find((v) => v.id === rightVersionId);
+
+  // 영상 재생 URL 결정
+  // 우선순위: file_url (R2) > hls_url (HLS - HLS.js 사용) > download_url (MP4)
+  const getVideoUrl = (video: VideoVersionWithUploader | null | undefined): { url: string | null; isHls: boolean } => {
+    if (!video) return { url: null, isHls: false };
+
+    // 1. R2에 직접 업로드된 파일 (가장 안정적)
+    if (video.file_url) {
+      return { url: video.file_url, isHls: false };
+    }
+
+    // 2. HLS URL (Cloudflare Stream - 항상 작동함)
+    if (video.hls_url && video.stream_ready) {
+      return { url: sanitizeStreamUrl(video.hls_url), isHls: true };
+    }
+
+    // 3. Stream의 다운로드 URL (MP4 - 다운로드가 활성화된 경우에만 작동)
+    if (video.download_url) {
+      return { url: sanitizeStreamUrl(video.download_url), isHls: false };
+    }
+
+    return { url: null, isHls: false };
+  };
+
+  const leftVideoData = getVideoUrl(leftVideo);
+  const rightVideoData = getVideoUrl(rightVideo);
 
   // 모달 닫기 핸들러
   const handleClose = useCallback(() => {
@@ -395,12 +422,14 @@ export function VideoCompareModal({
   // 공통 props for compare components
   const compareProps = {
     leftVideo: {
-      url: leftVideo?.file_url || '',
+      url: leftVideoData.url || '',
       label: leftVideo ? `v${leftVideo.version_number}` : '',
+      isHls: leftVideoData.isHls,
     },
     rightVideo: {
-      url: rightVideo?.file_url || '',
+      url: rightVideoData.url || '',
       label: rightVideo ? `v${rightVideo.version_number}` : '',
+      isHls: rightVideoData.isHls,
     },
     currentTime,
     isPlaying,
@@ -545,7 +574,7 @@ export function VideoCompareModal({
                 닫기
               </Button>
             </div>
-          ) : leftVideo?.file_url && rightVideo?.file_url ? (
+          ) : leftVideoData.url && rightVideoData.url ? (
             <>
               {/* 비교 영역 + 오버레이 컨트롤 */}
               <div

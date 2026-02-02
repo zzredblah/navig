@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { boardsQuerySchema, createBoardSchema } from '@/lib/validations/board';
+import { ActivityLogger } from '@/lib/activity/logger';
 
 /**
  * GET /api/projects/:projectId/boards
@@ -194,6 +195,14 @@ export async function POST(
       console.error('[Board Create] 생성 실패:', createError);
       return NextResponse.json({ error: '보드 생성에 실패했습니다.' }, { status: 500 });
     }
+
+    // 활동 로그 기록
+    await ActivityLogger.logBoardCreated(
+      projectId,
+      user.id,
+      board.id,
+      board.title
+    );
 
     return NextResponse.json({ board }, { status: 201 });
   } catch (error) {
