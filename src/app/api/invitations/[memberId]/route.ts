@@ -6,6 +6,9 @@ import { createClient, createAdminClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { ActivityLogger } from '@/lib/activity/logger';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AdminClient = any; // chat_rooms, chat_room_members 테이블 타입 미정의로 any 사용
+
 type RouteParams = Promise<{ memberId: string }>;
 
 // 초대 수락
@@ -76,6 +79,38 @@ export async function POST(
       .select('name')
       .eq('id', user.id)
       .single();
+
+    // 프로젝트 채팅방에 멤버 추가
+    const chatClient = adminClient as AdminClient;
+    const { data: chatRoom } = await chatClient
+      .from('chat_rooms')
+      .select('id')
+      .eq('type', 'project')
+      .eq('project_id', member.project_id)
+      .single();
+
+    if (chatRoom) {
+      // 이미 멤버인지 확인
+      const { data: existingMember } = await chatClient
+        .from('chat_room_members')
+        .select('id')
+        .eq('room_id', chatRoom.id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (!existingMember) {
+        const { error: chatMemberError } = await chatClient
+          .from('chat_room_members')
+          .insert({
+            room_id: chatRoom.id,
+            user_id: user.id,
+          });
+
+        if (chatMemberError) {
+          console.error('[Invitation API] 채팅방 멤버 추가 실패:', chatMemberError);
+        }
+      }
+    }
 
     // 활동 로그 기록
     await ActivityLogger.logMemberJoined(

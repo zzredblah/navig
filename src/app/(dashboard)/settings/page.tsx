@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Settings, User, Check, Loader2, CreditCard } from 'lucide-react';
+import { Settings, User, Check, Loader2, CreditCard, Briefcase, Bell, Link2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
@@ -119,6 +119,45 @@ export default function SettingsPage() {
             <div>
               <div className="font-medium text-gray-900">구독 및 결제</div>
               <div className="text-sm text-gray-500">플랜 관리, 결제 내역, 사용량 확인</div>
+            </div>
+          </Link>
+
+          <Link
+            href="/settings/portfolio"
+            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <div className="w-10 h-10 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">
+              <Briefcase className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="font-medium text-gray-900">포트폴리오</div>
+              <div className="text-sm text-gray-500">나만의 포트폴리오 페이지 만들기</div>
+            </div>
+          </Link>
+
+          <Link
+            href="/settings/notifications"
+            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <div className="w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+              <Bell className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="font-medium text-gray-900">알림 설정</div>
+              <div className="text-sm text-gray-500">푸시 알림 및 알림 기본 설정</div>
+            </div>
+          </Link>
+
+          <Link
+            href="/settings/integrations"
+            className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <div className="w-10 h-10 rounded-lg bg-orange-100 text-orange-600 flex items-center justify-center">
+              <Link2 className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="font-medium text-gray-900">외부 연동</div>
+              <div className="text-sm text-gray-500">Google Drive 등 외부 서비스 연동</div>
             </div>
           </Link>
         </CardContent>

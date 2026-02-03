@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter, usePathname } from 'next/navigation';
-import { Menu, LogOut, User, Settings, MessageSquare } from 'lucide-react';
+import { Menu, LogOut, User, Settings, MessageSquare, Bot } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -17,6 +18,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { NotificationBell } from '@/components/notifications/NotificationBell';
 import { ChatPanel } from '@/components/chat/ChatPanel';
+import { AIChatbotPanel } from '@/components/chat/AIChatbotPanel';
+import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 import { useChatUnread } from '@/hooks/use-chat-unread';
 import { clearAllAppData } from '@/stores/project-context-store';
 
@@ -29,48 +32,71 @@ interface HeaderProps {
   onMenuClick?: () => void;
 }
 
-const pageTitles: Record<string, string> = {
-  '/dashboard': '대시보드',
-  '/projects': '프로젝트',
-  '/documents': '문서',
-  '/videos': '영상',
-  '/boards': '레퍼런스 보드',
-  '/team': '팀 멤버',
-  '/notifications': '알림',
-  '/settings': '설정',
-  '/help': '도움말',
+// 페이지 경로 -> 번역 키 매핑
+const pageTranslationKeys: Record<string, string> = {
+  '/dashboard': 'navigation.dashboard',
+  '/projects': 'navigation.projects',
+  '/documents': 'documents.title',
+  '/videos': 'videos.title',
+  '/boards': 'board.title',
+  '/team': 'projects.members',
+  '/notifications': 'navigation.notifications',
+  '/settings': 'navigation.settings',
+  '/help': 'navigation.help',
+  '/community': 'navigation.community',
+  '/analytics': 'navigation.analytics',
 };
 
-function getPageTitle(pathname: string): string {
+function getPageTranslationKey(pathname: string): string | null {
   // 정확한 경로 매칭
-  if (pageTitles[pathname]) return pageTitles[pathname];
+  if (pageTranslationKeys[pathname]) return pageTranslationKeys[pathname];
 
   // 프로젝트 내 페이지 감지 (더 구체적인 패턴 먼저)
-  if (pathname.match(/\/projects\/[^/]+\/videos/)) return '영상';
-  if (pathname.match(/\/projects\/[^/]+\/documents/)) return '문서';
-  if (pathname.match(/\/projects\/[^/]+\/boards/)) return '레퍼런스 보드';
-  if (pathname.match(/\/projects\/[^/]+\/members/)) return '팀 멤버';
-  if (pathname.match(/\/projects\/[^/]+\/settings/)) return '프로젝트 설정';
+  if (pathname.match(/\/projects\/[^/]+\/videos/)) return 'videos.title';
+  if (pathname.match(/\/projects\/[^/]+\/documents/)) return 'documents.title';
+  if (pathname.match(/\/projects\/[^/]+\/boards/)) return 'board.title';
+  if (pathname.match(/\/projects\/[^/]+\/members/)) return 'projects.members';
+  if (pathname.match(/\/projects\/[^/]+\/settings/)) return 'projects.settings';
+  if (pathname.match(/\/projects\/[^/]+\/timeline/)) return 'projects.timeline';
+  if (pathname.match(/\/projects\/[^/]+\/chat/)) return 'projects.chat';
 
   // 프로젝트 홈 (정확히 /projects/{id} 또는 /projects/{id}/)
-  if (pathname.match(/\/projects\/[^/]+\/?$/)) return '프로젝트 홈';
+  if (pathname.match(/\/projects\/[^/]+\/?$/)) return 'projects.title';
 
   // 일반 경로
-  if (pathname.startsWith('/documents/')) return '문서';
-  if (pathname.startsWith('/videos/')) return '영상';
-  if (pathname.startsWith('/boards/')) return '레퍼런스 보드';
-  if (pathname.startsWith('/settings/')) return '설정';
+  if (pathname.startsWith('/documents/')) return 'documents.title';
+  if (pathname.startsWith('/videos/')) return 'videos.title';
+  if (pathname.startsWith('/boards/')) return 'board.title';
+  if (pathname.startsWith('/settings/')) return 'navigation.settings';
+  if (pathname.startsWith('/community/')) return 'navigation.community';
+  if (pathname.startsWith('/analytics/')) return 'navigation.analytics';
 
-  return '';
+  return null;
 }
 
 export function Header({ user, onMenuClick }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const t = useTranslations();
+  const tCommon = useTranslations('common');
+  const tAuth = useTranslations('auth');
+  const tNav = useTranslations('navigation');
+  const tAI = useTranslations('ai');
+
+  const [mounted, setMounted] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isAIOpen, setIsAIOpen] = useState(false);
   const { unreadCount } = useChatUnread();
-  const pageTitle = getPageTitle(pathname);
+
+  // Hydration 에러 방지
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // 페이지 타이틀 가져오기
+  const pageTranslationKey = getPageTranslationKey(pathname);
+  const pageTitle = pageTranslationKey ? t(pageTranslationKey) : '';
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
@@ -129,6 +155,21 @@ export function Header({ user, onMenuClick }: HeaderProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* 언어 전환 */}
+          <LanguageSwitcher variant="icon" />
+
+          {/* AI 챗봇 버튼 */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative h-9 w-9"
+            onClick={() => setIsAIOpen(true)}
+            title={tAI('assistant')}
+          >
+            <Bot className="h-5 w-5 text-blue-500" />
+            <span className="sr-only">{tAI('assistant')}</span>
+          </Button>
+
           {/* 채팅 버튼 */}
           <Button
             variant="ghost"
@@ -147,53 +188,68 @@ export function Header({ user, onMenuClick }: HeaderProps) {
 
           <NotificationBell />
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                <Avatar className="h-9 w-9">
-                  <AvatarImage src={user.avatar_url || undefined} alt={user.name} />
-                  <AvatarFallback className="bg-primary-100 text-primary-700">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="w-56" align="end" forceMount>
-              <div className="flex items-center justify-start gap-2 p-2">
-                <div className="flex flex-col space-y-1 leading-none">
-                  <p className="font-medium">{user.name}</p>
-                  <p className="text-sm text-gray-500 truncate">{user.email}</p>
+          {/* 프로필 드롭다운 - Hydration 에러 방지 */}
+          {mounted ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                  <Avatar className="h-9 w-9">
+                    <AvatarImage src={user.avatar_url || undefined} alt={user.name} />
+                    <AvatarFallback className="bg-primary-100 text-primary-700">
+                      {initials}
+                    </AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-56" align="end" forceMount>
+                <div className="flex items-center justify-start gap-2 p-2">
+                  <div className="flex flex-col space-y-1 leading-none">
+                    <p className="font-medium">{user.name}</p>
+                    <p className="text-sm text-gray-500 truncate">{user.email}</p>
+                  </div>
                 </div>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/settings/profile" className="cursor-pointer">
-                  <User className="mr-2 h-4 w-4" />
-                  프로필
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings" className="cursor-pointer">
-                  <Settings className="mr-2 h-4 w-4" />
-                  설정
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="cursor-pointer text-error-600 focus:text-error-600"
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-              >
-                <LogOut className="mr-2 h-4 w-4" />
-                {isLoggingOut ? '로그아웃 중...' : '로그아웃'}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link href="/settings/profile" className="cursor-pointer">
+                    <User className="mr-2 h-4 w-4" />
+                    {tNav('profile')}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/settings" className="cursor-pointer">
+                    <Settings className="mr-2 h-4 w-4" />
+                    {tNav('settings')}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="cursor-pointer text-error-600 focus:text-error-600"
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  {isLoggingOut ? `${tAuth('logout')}...` : tAuth('logout')}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+              <Avatar className="h-9 w-9">
+                <AvatarImage src={user.avatar_url || undefined} alt={user.name} />
+                <AvatarFallback className="bg-primary-100 text-primary-700">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+            </Button>
+          )}
         </div>
       </div>
 
       {/* 채팅 패널 */}
       <ChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+
+      {/* AI 챗봇 패널 */}
+      <AIChatbotPanel isOpen={isAIOpen} onClose={() => setIsAIOpen(false)} />
     </header>
   );
 }

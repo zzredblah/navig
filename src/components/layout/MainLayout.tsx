@@ -7,6 +7,7 @@ import { Sidebar } from './Sidebar';
 import { Breadcrumb } from '@/components/ui/breadcrumb';
 import { useRealtimeNotifications } from '@/hooks/use-realtime-notifications';
 import { GlobalHotkeysProvider } from '@/components/providers/GlobalHotkeysProvider';
+import { InstallPrompt, IOSInstallGuide, UpdateNotification } from '@/components/pwa';
 import type { SidebarConfig } from '@/types/database';
 
 interface MainLayoutProps {
@@ -57,6 +58,11 @@ export function MainLayout({ children, user, sidebarConfig, showBreadcrumb = tru
             {children}
           </main>
         </div>
+
+        {/* PWA Install & Update Prompts */}
+        <InstallPrompt />
+        <IOSInstallGuide />
+        <UpdateNotification />
       </div>
     </GlobalHotkeysProvider>
   );

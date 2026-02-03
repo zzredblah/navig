@@ -22,6 +22,7 @@ import {
   Clock,
   BarChart3,
   MessageSquare,
+  Scissors,
 } from 'lucide-react';
 import { SidebarPlanBadge } from '@/components/subscription/SidebarPlanBadge';
 import { Button } from '@/components/ui/button';
@@ -32,7 +33,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import type { SidebarConfig } from '@/types/database';
+import type { SidebarConfig, MemberRole } from '@/types/database';
 import { useProjectContextStore } from '@/stores/project-context-store';
 import { useEffect, useState } from 'react';
 
@@ -50,6 +51,7 @@ interface MenuItem {
   projectHref?: string; // 프로젝트 선택 시 href 템플릿 ({id} 포함)
   alwaysGlobal?: boolean; // 항상 글로벌 경로 사용 (대시보드, 알림)
   projectOnly?: boolean; // 프로젝트 선택 시에만 표시 (레퍼런스 보드)
+  allowedRoles?: MemberRole[]; // 특정 역할만 표시 (편집 메뉴 등)
 }
 
 const menuItems: MenuItem[] = [
@@ -76,6 +78,14 @@ const menuItems: MenuItem[] = [
     href: '/videos',
     projectHref: '/projects/{id}/videos',
     icon: Video,
+  },
+  {
+    title: '편집',
+    href: '/edits',
+    projectHref: '/projects/{id}/edits',
+    icon: Scissors,
+    projectOnly: true,
+    allowedRoles: ['owner', 'editor'],
   },
   {
     title: '레퍼런스 보드',
@@ -150,6 +160,7 @@ export function Sidebar({ isOpen, onClose, sidebarConfig }: SidebarProps) {
   const { selectedProject, setSelectedProject, clearSelectedProject } = useProjectContextStore();
   const [recentProjects, setRecentProjects] = useState<SimpleProject[]>([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
+  const [userRole, setUserRole] = useState<MemberRole | null>(null);
 
   // 최근 프로젝트 목록 로드 및 선택된 프로젝트 유효성 검사
   useEffect(() => {
@@ -243,9 +254,42 @@ export function Sidebar({ isOpen, onClose, sidebarConfig }: SidebarProps) {
     // 프로젝트 자동 해제 로직 제거 - 명시적으로 "프로젝트 나가기"를 눌렀을 때만 해제
   }, [pathname, recentProjects, setSelectedProject]);
 
-  const filteredMenuItems = menuItems.filter(
-    (item) => ALWAYS_VISIBLE.includes(item.href) || !hiddenItems.includes(item.href)
-  );
+  // 선택된 프로젝트의 사용자 역할 조회
+  useEffect(() => {
+    if (selectedProject) {
+      fetch(`/api/projects/${selectedProject.id}`)
+        .then((res) => {
+          if (!res.ok) return null;
+          return res.json();
+        })
+        .then((data) => {
+          if (data?.data?.userRole) {
+            setUserRole(data.data.userRole);
+          } else {
+            setUserRole(null);
+          }
+        })
+        .catch(() => {
+          setUserRole(null);
+        });
+    } else {
+      setUserRole(null);
+    }
+  }, [selectedProject]);
+
+  const filteredMenuItems = menuItems.filter((item) => {
+    // 항상 표시되는 항목
+    if (ALWAYS_VISIBLE.includes(item.href)) return true;
+    // 숨김 설정된 항목
+    if (hiddenItems.includes(item.href)) return false;
+    // 역할 기반 필터링 (프로젝트 선택 시에만 적용)
+    if (item.allowedRoles && selectedProject) {
+      if (!userRole || !item.allowedRoles.includes(userRole)) {
+        return false;
+      }
+    }
+    return true;
+  });
   const filteredBottomMenuItems = bottomMenuItems.filter(
     (item) => ALWAYS_VISIBLE.includes(item.href) || !hiddenItems.includes(item.href)
   );

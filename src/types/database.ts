@@ -817,6 +817,9 @@ export interface Database {
           start_time: number;
           end_time: number;
           description: string | null;
+          is_ai_generated: boolean;
+          confidence: number | null;
+          ai_metadata: Record<string, unknown> | null;
           created_by: string;
           created_at: string;
         };
@@ -828,6 +831,9 @@ export interface Database {
           start_time: number;
           end_time: number;
           description?: string | null;
+          is_ai_generated?: boolean;
+          confidence?: number | null;
+          ai_metadata?: Record<string, unknown> | null;
           created_by: string;
           created_at?: string;
         };
@@ -839,6 +845,9 @@ export interface Database {
           start_time?: number;
           end_time?: number;
           description?: string | null;
+          is_ai_generated?: boolean;
+          confidence?: number | null;
+          ai_metadata?: Record<string, unknown> | null;
           created_by?: string;
           created_at?: string;
         };
@@ -857,6 +866,589 @@ export interface Database {
           },
           {
             foreignKeyName: 'video_change_markers_created_by_fkey';
+            columns: ['created_by'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      video_diff_analyses: {
+        Row: {
+          id: string;
+          version_id: string;
+          compared_version_id: string;
+          status: 'pending' | 'processing' | 'completed' | 'failed';
+          error_message: string | null;
+          markers_count: number;
+          processing_time_ms: number | null;
+          model: string | null;
+          metadata: Record<string, unknown> | null;
+          created_by: string;
+          created_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          version_id: string;
+          compared_version_id: string;
+          status?: 'pending' | 'processing' | 'completed' | 'failed';
+          error_message?: string | null;
+          markers_count?: number;
+          processing_time_ms?: number | null;
+          model?: string | null;
+          metadata?: Record<string, unknown> | null;
+          created_by: string;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          version_id?: string;
+          compared_version_id?: string;
+          status?: 'pending' | 'processing' | 'completed' | 'failed';
+          error_message?: string | null;
+          markers_count?: number;
+          processing_time_ms?: number | null;
+          model?: string | null;
+          metadata?: Record<string, unknown> | null;
+          created_by?: string;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'video_diff_analyses_version_id_fkey';
+            columns: ['version_id'];
+            referencedRelation: 'video_versions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'video_diff_analyses_compared_version_id_fkey';
+            columns: ['compared_version_id'];
+            referencedRelation: 'video_versions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'video_diff_analyses_created_by_fkey';
+            columns: ['created_by'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      portfolios: {
+        Row: {
+          user_id: string;
+          slug: string | null;
+          display_name: string | null;
+          bio: string | null;
+          skills: string[];
+          website_url: string | null;
+          contact_email: string | null;
+          social_links: Record<string, string>;
+          is_public: boolean;
+          theme: string;
+          custom_css: string | null;
+          view_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          slug?: string | null;
+          display_name?: string | null;
+          bio?: string | null;
+          skills?: string[];
+          website_url?: string | null;
+          contact_email?: string | null;
+          social_links?: Record<string, string>;
+          is_public?: boolean;
+          theme?: string;
+          custom_css?: string | null;
+          view_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          slug?: string | null;
+          display_name?: string | null;
+          bio?: string | null;
+          skills?: string[];
+          website_url?: string | null;
+          contact_email?: string | null;
+          social_links?: Record<string, string>;
+          is_public?: boolean;
+          theme?: string;
+          custom_css?: string | null;
+          view_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'portfolios_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      portfolio_works: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          description: string | null;
+          category: string | null;
+          thumbnail_url: string | null;
+          video_url: string | null;
+          external_url: string | null;
+          project_id: string | null;
+          tags: string[];
+          is_featured: boolean;
+          is_public: boolean;
+          view_count: number;
+          order_index: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          title: string;
+          description?: string | null;
+          category?: string | null;
+          thumbnail_url?: string | null;
+          video_url?: string | null;
+          external_url?: string | null;
+          project_id?: string | null;
+          tags?: string[];
+          is_featured?: boolean;
+          is_public?: boolean;
+          view_count?: number;
+          order_index?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          title?: string;
+          description?: string | null;
+          category?: string | null;
+          thumbnail_url?: string | null;
+          video_url?: string | null;
+          external_url?: string | null;
+          project_id?: string | null;
+          tags?: string[];
+          is_featured?: boolean;
+          is_public?: boolean;
+          view_count?: number;
+          order_index?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'portfolio_works_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'portfolios';
+            referencedColumns: ['user_id'];
+          },
+          {
+            foreignKeyName: 'portfolio_works_project_id_fkey';
+            columns: ['project_id'];
+            referencedRelation: 'projects';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      push_subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          device_name: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+          last_used_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          endpoint: string;
+          p256dh: string;
+          auth: string;
+          device_name?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          last_used_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          endpoint?: string;
+          p256dh?: string;
+          auth?: string;
+          device_name?: string | null;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+          last_used_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'push_subscriptions_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      push_notification_logs: {
+        Row: {
+          id: string;
+          subscription_id: string | null;
+          user_id: string;
+          notification_type: string;
+          title: string;
+          body: string | null;
+          data: Record<string, unknown>;
+          status: string;
+          error_message: string | null;
+          sent_at: string | null;
+          clicked_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          subscription_id?: string | null;
+          user_id: string;
+          notification_type: string;
+          title: string;
+          body?: string | null;
+          data?: Record<string, unknown>;
+          status?: string;
+          error_message?: string | null;
+          sent_at?: string | null;
+          clicked_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          subscription_id?: string | null;
+          user_id?: string;
+          notification_type?: string;
+          title?: string;
+          body?: string | null;
+          data?: Record<string, unknown>;
+          status?: string;
+          error_message?: string | null;
+          sent_at?: string | null;
+          clicked_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'push_notification_logs_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'push_notification_logs_subscription_id_fkey';
+            columns: ['subscription_id'];
+            referencedRelation: 'push_subscriptions';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      push_notification_settings: {
+        Row: {
+          user_id: string;
+          enabled: boolean;
+          feedback_enabled: boolean;
+          chat_enabled: boolean;
+          project_enabled: boolean;
+          system_enabled: boolean;
+          quiet_hours_start: string | null;
+          quiet_hours_end: string | null;
+          timezone: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          enabled?: boolean;
+          feedback_enabled?: boolean;
+          chat_enabled?: boolean;
+          project_enabled?: boolean;
+          system_enabled?: boolean;
+          quiet_hours_start?: string | null;
+          quiet_hours_end?: string | null;
+          timezone?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          enabled?: boolean;
+          feedback_enabled?: boolean;
+          chat_enabled?: boolean;
+          project_enabled?: boolean;
+          system_enabled?: boolean;
+          quiet_hours_start?: string | null;
+          quiet_hours_end?: string | null;
+          timezone?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'push_notification_settings_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      video_subtitles: {
+        Row: {
+          id: string;
+          video_version_id: string;
+          language: string;
+          format: 'srt' | 'vtt' | 'json';
+          content: string;
+          status: 'processing' | 'completed' | 'failed';
+          error_message: string | null;
+          duration_seconds: number | null;
+          word_count: number | null;
+          confidence_score: number | null;
+          is_auto_generated: boolean;
+          metadata: Record<string, unknown>;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          video_version_id: string;
+          language: string;
+          format?: 'srt' | 'vtt' | 'json';
+          content?: string;
+          status?: 'processing' | 'completed' | 'failed';
+          error_message?: string | null;
+          duration_seconds?: number | null;
+          word_count?: number | null;
+          confidence_score?: number | null;
+          is_auto_generated?: boolean;
+          metadata?: Record<string, unknown>;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          video_version_id?: string;
+          language?: string;
+          format?: 'srt' | 'vtt' | 'json';
+          content?: string;
+          status?: 'processing' | 'completed' | 'failed';
+          error_message?: string | null;
+          duration_seconds?: number | null;
+          word_count?: number | null;
+          confidence_score?: number | null;
+          is_auto_generated?: boolean;
+          metadata?: Record<string, unknown>;
+          created_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'video_subtitles_video_version_id_fkey';
+            columns: ['video_version_id'];
+            referencedRelation: 'video_versions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'video_subtitles_created_by_fkey';
+            columns: ['created_by'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      subtitle_segments: {
+        Row: {
+          id: string;
+          subtitle_id: string;
+          segment_index: number;
+          start_time: number;
+          end_time: number;
+          text: string;
+          confidence: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          subtitle_id: string;
+          segment_index: number;
+          start_time: number;
+          end_time: number;
+          text: string;
+          confidence?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          subtitle_id?: string;
+          segment_index?: number;
+          start_time?: number;
+          end_time?: number;
+          text?: string;
+          confidence?: number | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'subtitle_segments_subtitle_id_fkey';
+            columns: ['subtitle_id'];
+            referencedRelation: 'video_subtitles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      external_integrations: {
+        Row: {
+          id: string;
+          user_id: string;
+          provider: string;
+          access_token: string;
+          refresh_token: string | null;
+          token_expires_at: string | null;
+          provider_user_id: string | null;
+          provider_email: string | null;
+          metadata: Record<string, unknown>;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          provider: string;
+          access_token: string;
+          refresh_token?: string | null;
+          token_expires_at?: string | null;
+          provider_user_id?: string | null;
+          provider_email?: string | null;
+          metadata?: Record<string, unknown>;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          provider?: string;
+          access_token?: string;
+          refresh_token?: string | null;
+          token_expires_at?: string | null;
+          provider_user_id?: string | null;
+          provider_email?: string | null;
+          metadata?: Record<string, unknown>;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'external_integrations_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      edit_projects: {
+        Row: {
+          id: string;
+          project_id: string;
+          source_video_id: string | null;
+          source_url: string | null;
+          source_key: string | null;
+          original_duration: number | null;
+          title: string;
+          description: string | null;
+          status: 'draft' | 'registered' | 'approved' | 'rejected';
+          edit_metadata: Record<string, unknown>;
+          preview_thumbnail_url: string | null;
+          registered_at: string | null;
+          registered_video_id: string | null;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          source_video_id?: string | null;
+          source_url?: string | null;
+          source_key?: string | null;
+          original_duration?: number | null;
+          title: string;
+          description?: string | null;
+          status?: 'draft' | 'registered' | 'approved' | 'rejected';
+          edit_metadata?: Record<string, unknown>;
+          preview_thumbnail_url?: string | null;
+          registered_at?: string | null;
+          registered_video_id?: string | null;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          source_video_id?: string | null;
+          source_url?: string | null;
+          source_key?: string | null;
+          original_duration?: number | null;
+          title?: string;
+          description?: string | null;
+          status?: 'draft' | 'registered' | 'approved' | 'rejected';
+          edit_metadata?: Record<string, unknown>;
+          preview_thumbnail_url?: string | null;
+          registered_at?: string | null;
+          registered_video_id?: string | null;
+          created_by?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'edit_projects_project_id_fkey';
+            columns: ['project_id'];
+            referencedRelation: 'projects';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'edit_projects_source_video_id_fkey';
+            columns: ['source_video_id'];
+            referencedRelation: 'video_versions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'edit_projects_registered_video_id_fkey';
+            columns: ['registered_video_id'];
+            referencedRelation: 'video_versions';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'edit_projects_created_by_fkey';
             columns: ['created_by'];
             referencedRelation: 'profiles';
             referencedColumns: ['id'];
@@ -898,6 +1490,7 @@ export interface Database {
       video_status: VideoStatus;
       feedback_status: FeedbackStatus;
       notification_type: NotificationType;
+      edit_project_status: 'draft' | 'registered' | 'approved' | 'rejected';
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -936,6 +1529,29 @@ export type Notification = Tables<'notifications'>;
 export type NotificationSettings = Tables<'notification_settings'>;
 export type Board = Tables<'boards'>;
 export type BoardElement = Tables<'board_elements'>;
+export type PortfolioRow = Tables<'portfolios'>;
+export type PortfolioWorkRow = Tables<'portfolio_works'>;
+export type PushSubscriptionRow = Tables<'push_subscriptions'>;
+export type PushNotificationLogRow = Tables<'push_notification_logs'>;
+export type PushNotificationSettingsRow = Tables<'push_notification_settings'>;
+export type VideoSubtitleRow = Tables<'video_subtitles'>;
+export type SubtitleSegmentRow = Tables<'subtitle_segments'>;
+export type VideoChangeMarkerRow = Tables<'video_change_markers'>;
+export type VideoDiffAnalysisRow = Tables<'video_diff_analyses'>;
+export type EditProjectRow = Tables<'edit_projects'>;
+
+// Re-export editing types
+export type {
+  EditProjectStatus,
+  EditMetadata,
+  EditProject,
+  EditProjectWithDetails,
+  TrimSettings,
+  TextOverlay,
+  FilterSettings,
+  AudioSettings,
+  EditTool,
+} from './editing';
 
 // Re-export subscription types
 export type {

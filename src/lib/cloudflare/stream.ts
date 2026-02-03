@@ -620,28 +620,103 @@ export async function fetchDownloadUrl(videoId: string): Promise<string | null> 
 }
 
 /**
- * 다운로드 활성화
- *
- * 영상에 대한 다운로드를 활성화합니다.
+ * 다운로드 상태 확인 및 URL 가져오기
  */
-export async function enableDownload(videoId: string): Promise<void> {
+export async function getDownloadInfo(videoId: string): Promise<{
+  ready: boolean;
+  url: string | null;
+  percentComplete?: number;
+}> {
   const baseUrl = getStreamBaseUrl();
   const headers = getHeaders();
 
-  const response = await fetch(`${baseUrl}/${videoId}`, {
-    method: 'POST',
+  const response = await fetch(`${baseUrl}/${videoId}/downloads`, {
+    method: 'GET',
     headers,
-    body: JSON.stringify({
-      meta: { downloadable: 'true' },
-    }),
   });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(
-      `다운로드 활성화 실패: ${error.errors?.[0]?.message || response.statusText}`
-    );
+  if (response.status === 404) {
+    // 다운로드가 아직 생성되지 않음
+    return { ready: false, url: null };
   }
+
+  if (!response.ok) {
+    console.error('[Stream] 다운로드 상태 조회 실패:', response.status);
+    return { ready: false, url: null };
+  }
+
+  const data = await response.json();
+  const result = data.result?.default;
+
+  if (result?.status === 'ready' && result?.url) {
+    return { ready: true, url: result.url };
+  }
+
+  return {
+    ready: false,
+    url: null,
+    percentComplete: result?.percentComplete,
+  };
+}
+
+/**
+ * 다운로드 활성화
+ *
+ * 영상에 대한 다운로드를 활성화합니다.
+ * 참고: Cloudflare Stream은 다운로드 활성화 후 파일 생성에 시간이 걸릴 수 있습니다.
+ */
+export async function enableDownload(videoId: string): Promise<{ url: string | null; ready: boolean }> {
+  const baseUrl = getStreamBaseUrl();
+  const headers = getHeaders();
+
+  // 먼저 기존 다운로드 상태 확인
+  const existingDownload = await getDownloadInfo(videoId);
+  if (existingDownload.ready && existingDownload.url) {
+    console.log('[Stream] 다운로드 이미 준비됨');
+    return { url: existingDownload.url, ready: true };
+  }
+
+  // 다운로드 생성 요청
+  const response = await fetch(`${baseUrl}/${videoId}/downloads`, {
+    method: 'POST',
+    headers,
+  });
+
+  // 이미 다운로드가 요청된 경우 409 반환
+  if (response.status === 409) {
+    console.log('[Stream] 다운로드 생성 중...');
+    // 다시 상태 확인
+    const downloadInfo = await getDownloadInfo(videoId);
+    return { url: downloadInfo.url, ready: downloadInfo.ready };
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[Stream] 다운로드 활성화 실패:', response.status, errorText);
+    return { url: null, ready: false };
+  }
+
+  console.log('[Stream] 다운로드 생성 요청 성공 - 준비 중...');
+
+  // 다운로드가 준비될 때까지 폴링 (최대 30초)
+  const maxWait = 30000;
+  const pollInterval = 3000;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWait) {
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+    const downloadInfo = await getDownloadInfo(videoId);
+
+    if (downloadInfo.ready && downloadInfo.url) {
+      console.log('[Stream] 다운로드 준비 완료!');
+      return { url: downloadInfo.url, ready: true };
+    }
+
+    console.log(`[Stream] 다운로드 준비 중... ${downloadInfo.percentComplete || 0}%`);
+  }
+
+  console.log('[Stream] 다운로드 준비 시간 초과');
+  return { url: null, ready: false };
 }
 
 // ============================================

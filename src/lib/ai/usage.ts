@@ -6,7 +6,13 @@ import { createAdminClient, createClient } from '@/lib/supabase/server';
 import { startOfMonth, endOfMonth } from 'date-fns';
 
 // AI 기능 유형
-export type AIFeature = 'voice_feedback' | 'template_recommend' | 'feedback_summary';
+export type AIFeature =
+  | 'voice_feedback'
+  | 'template_recommend'
+  | 'feedback_summary'
+  | 'chatbot'
+  | 'subtitle_generation'
+  | 'video_diff';
 
 // 플랜별 AI 기능 제한
 const AI_LIMITS: Record<string, { enabled: boolean; monthlyRequests: number }> = {
@@ -33,6 +39,9 @@ const FEATURE_COSTS: Record<AIFeature, number> = {
   voice_feedback: 0.006, // Whisper API 약 $0.006/minute
   template_recommend: 0.002, // GPT-4o-mini 약 $0.002/request
   feedback_summary: 0.003, // GPT-4o-mini 약 $0.003/request
+  chatbot: 0.0004, // GPT-4o-mini 약 $0.0004/request (짧은 대화)
+  subtitle_generation: 0.006, // Whisper API 약 $0.006/minute
+  video_diff: 0.005, // GPT-4o-mini vision 약 $0.005/request
 };
 
 interface AIUsageCheckResult {
@@ -48,23 +57,33 @@ interface AIUsageCheckResult {
 async function getUserPlan(userId: string): Promise<string> {
   const adminClient = createAdminClient();
 
-  // Note: subscriptions 테이블이 아직 없을 수 있음
-  const { data: subscription } = await (adminClient as any)
-    .from('subscriptions')
-    .select('plan_id')
-    .eq('user_id', userId)
-    .eq('status', 'active')
-    .single();
+  try {
+    // subscriptions 테이블과 subscription_plans 조인하여 플랜 이름 조회
+    const { data: subscription, error } = await (adminClient as any)
+      .from('subscriptions')
+      .select(`
+        status,
+        current_period_end,
+        plan:subscription_plans(name)
+      `)
+      .eq('user_id', userId)
+      .in('status', ['active', 'trialing'])
+      .gt('current_period_end', new Date().toISOString())
+      .single();
 
-  if (!subscription) return 'free';
+    if (error || !subscription) {
+      console.log('[AI Usage] 구독 정보 없음, free 플랜 반환');
+      return 'free';
+    }
 
-  // plan_id에서 플랜 이름 추출 (예: 'price_pro_monthly' -> 'pro')
-  const planId = subscription.plan_id || '';
-  if (planId.includes('team')) return 'team';
-  if (planId.includes('enterprise')) return 'enterprise';
-  if (planId.includes('pro')) return 'pro';
-
-  return 'free';
+    // plan.name에서 플랜 이름 추출
+    const planName = subscription.plan?.name || 'free';
+    console.log('[AI Usage] 사용자 플랜:', planName);
+    return planName;
+  } catch (error) {
+    console.error('[AI Usage] 플랜 조회 실패:', error);
+    return 'free';
+  }
 }
 
 /**
@@ -177,6 +196,9 @@ export async function getAIUsageStats(userId: string): Promise<{
     voice_feedback: 0,
     template_recommend: 0,
     feedback_summary: 0,
+    chatbot: 0,
+    subtitle_generation: 0,
+    video_diff: 0,
   };
 
   if (featureData) {

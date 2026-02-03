@@ -136,13 +136,7 @@ export function ChatRoomList({ onRoomSelect, selectedRoomId }: ChatRoomListProps
     );
   });
 
-  const filteredRooms = rooms.filter((room) => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    const name = getRoomName(room).toLowerCase();
-    return name.includes(query);
-  });
-
+  // 채팅방 이름 가져오기 (filteredRooms보다 먼저 정의)
   const getRoomName = (room: ChatRoomWithDetails): string => {
     if (room.type === 'project') {
       return room.project?.title || room.project?.name || room.name || '프로젝트 채팅';
@@ -158,6 +152,13 @@ export function ChatRoomList({ onRoomSelect, selectedRoomId }: ChatRoomListProps
   const isGroupChat = (room: ChatRoomWithDetails): boolean => {
     return room.type === 'direct' && (room.members?.length || 0) > 1;
   };
+
+  const filteredRooms = rooms.filter((room) => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    const name = getRoomName(room).toLowerCase();
+    return name.includes(query);
+  });
 
   const getRoomAvatar = (room: ChatRoomWithDetails) => {
     // 그룹 채팅

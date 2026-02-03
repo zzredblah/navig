@@ -4,6 +4,9 @@ import { checkUsage } from '@/lib/usage/checker';
 import { ActivityLogger } from '@/lib/activity/logger';
 import { NextRequest, NextResponse } from 'next/server';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AdminClient = any; // chat_rooms, chat_room_members 테이블 타입 미정의로 any 사용
+
 // 프로젝트 목록 조회
 export async function GET(request: NextRequest) {
   try {
@@ -189,6 +192,34 @@ export async function POST(request: NextRequest) {
 
     if (memberError) {
       console.error('[Projects API] 멤버 추가 실패:', memberError);
+    }
+
+    // 프로젝트 채팅방 자동 생성
+    const chatClient = adminClient as AdminClient;
+    const { data: chatRoom, error: chatRoomError } = await chatClient
+      .from('chat_rooms')
+      .insert({
+        type: 'project',
+        project_id: project.id,
+        name: project.title,
+      })
+      .select()
+      .single();
+
+    if (chatRoomError) {
+      console.error('[Projects API] 채팅방 생성 실패:', chatRoomError);
+    } else if (chatRoom) {
+      // 소유자를 채팅방 멤버로 추가
+      const { error: chatMemberError } = await chatClient
+        .from('chat_room_members')
+        .insert({
+          room_id: chatRoom.id,
+          user_id: user.id,
+        });
+
+      if (chatMemberError) {
+        console.error('[Projects API] 채팅방 멤버 추가 실패:', chatMemberError);
+      }
     }
 
     // 활동 로그 기록
