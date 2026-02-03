@@ -1,7 +1,7 @@
 # NAVIG 오류 방지 가이드 (Error Prevention Guide)
 
-**버전:** 2.7
-**최종 수정:** 2026-02-02
+**버전:** 2.8
+**최종 수정:** 2026-02-03
 **목적:** 개발 중 발생한 오류와 해결책을 문서화하여 재발 방지
 
 ---
@@ -1916,3 +1916,240 @@ useEffect(() => {
 | `src/components/video/compare/OverlayCompare.tsx` | 오버레이 비교 (HLS + 동기화 패턴) |
 | `src/components/video/VideoCompareModal.tsx` | 비교 모달 (오디오 개별 제어) |
 | `src/app/(dashboard)/projects/[id]/videos/[videoId]/page.tsx` | 영상 상세 (safePlay/safePause 패턴) |
+
+---
+
+## 29. 편집 워크스페이스 관련
+
+### 29.1 문제: HLS 플레이어 초기화 시 Manifest 파싱 에러
+
+**원인:**
+- `videoUrl`이 `null`인 상태에서 HLS 플레이어를 초기화하려고 함
+- hls.js가 빈 URL이나 잘못된 URL에서 manifest를 로드하려다 실패
+- 에러 메시지: `"Manifest: Line: 1, column: 1, Syntax error."`
+
+**해결책:**
+```typescript
+// ❌ Bad: videoUrl 확인 없이 항상 VideoPreview 렌더링
+<div className="flex-1">
+  <VideoPreview />  {/* videoUrl이 null이면 HLS 에러 발생! */}
+</div>
+
+// ✅ Good: videoUrl 존재 여부에 따라 조건부 렌더링
+{videoUrl ? (
+  <>
+    <VideoPreview />
+    <PlaybackControls />
+  </>
+) : (
+  <VideoUploader
+    projectId={projectId}
+    editProjectId={editProject.id}
+    onUploadComplete={handleUploadComplete}
+  />
+)}
+```
+
+**VideoPreview 컴포넌트 내부:**
+```typescript
+// ✅ Good: videoUrl 체크 후 HLS 로드
+useEffect(() => {
+  if (!videoRef.current || !videoUrl) return;  // videoUrl 없으면 실행 안 함
+
+  if (Hls.isSupported() && videoUrl.includes('.m3u8')) {
+    const hls = new Hls();
+    hls.loadSource(videoUrl);
+    hls.attachMedia(videoRef.current);
+    // ...
+  }
+}, [videoUrl]);
+```
+
+**규칙:**
+- HLS 플레이어 사용 시 **반드시** `videoUrl` 존재 여부 체크
+- `videoUrl`이 없으면 업로드 UI 표시 (VideoUploader)
+- HLS 초기화 전 `if (!videoUrl) return;` 방어 코드 필수
+
+---
+
+### 29.2 문제: 편집 워크스페이스에서 영상 업로드 불가
+
+**원인:**
+- CreateEditModal에서 제목만 입력받고 "워크스페이스에서 업로드" 안내만 표시
+- 실제 VideoUploader 컴포넌트가 워크스페이스에 없음
+- 업로드 API 엔드포인트 미구현
+
+**해결책:**
+```typescript
+// 1. VideoUploader 컴포넌트 구현 (멀티파트 업로드)
+// src/components/editing/workspace/VideoUploader.tsx
+
+export function VideoUploader({
+  projectId,
+  editProjectId,
+  onUploadComplete,
+}: VideoUploaderProps) {
+  // 드래그 앤 드롭 + 파일 선택 UI
+  // 멀티파트 업로드 (10MB 청크)
+  // 진행률 표시
+  // duration 추출 후 콜백
+}
+
+// 2. 업로드 API 엔드포인트
+// /api/projects/[id]/edits/[editId]/upload - 업로드 시작 (initiateMultipartUpload)
+// /api/projects/[id]/edits/[editId]/upload/part-url - 추가 part URL 발급
+// /api/projects/[id]/edits/[editId]/upload-complete - 업로드 완료 처리
+
+// 3. EditWorkspace에서 조건부 렌더링
+{videoUrl ? (
+  <VideoPreview />
+) : (
+  <VideoUploader
+    projectId={projectId}
+    editProjectId={editProject.id}
+    onUploadComplete={handleUploadComplete}
+  />
+)}
+
+// 4. Zustand store에 setter 추가
+setVideoUrl: (url) => set({ videoUrl: url }),
+setVideoDuration: (duration) => {
+  const state = get();
+  set({
+    videoDuration: duration,
+    metadata: {
+      ...state.metadata,
+      trim: { ...state.metadata.trim, endTime: duration },
+    },
+  });
+},
+```
+
+**규칙:**
+- 편집 워크스페이스는 영상 없이 진입 가능 (업로드 UI 표시)
+- 업로드 완료 후 `setVideoUrl`, `setVideoDuration` 호출
+- 멀티파트 업로드로 대용량 파일 지원 (10MB 청크)
+
+---
+
+### 29.3 문제: 기능 위치 불일치 (자막 생성 중복)
+
+**원인:**
+- 자막 생성 기능이 영상 피드백 페이지와 편집 워크스페이스 양쪽에 존재
+- 기능 중복으로 사용자 혼란 발생
+- 편집 기능은 편집 워크스페이스에서만 사용해야 함
+
+**해결책:**
+```typescript
+// ❌ Bad: 영상 피드백 페이지에 자막 생성 포함
+// src/app/(dashboard)/projects/[id]/videos/[videoId]/page.tsx
+import { SubtitleGenerator } from '@/components/video/subtitles';
+
+<div className="border-t">
+  <SubtitleGenerator />  {/* 편집 기능이 피드백 페이지에 있음! */}
+  <VideoDiffAnalyzer />
+</div>
+
+// ✅ Good: 영상 피드백 페이지에서 편집 기능 제거
+// 자막 생성은 편집 워크스페이스(/edits/[editId])에서만 제공
+<div className="border-t">
+  {/* 영상 비교(AI 변경점 분석)만 유지 - 피드백에 필요한 기능 */}
+  {allVersions.length > 1 && <VideoDiffAnalyzer />}
+</div>
+```
+
+**기능 위치 원칙:**
+
+| 기능 | 영상 피드백 페이지 | 편집 워크스페이스 |
+|------|------------------|-----------------|
+| 영상 재생 | ✅ | ✅ |
+| 피드백 작성/조회 | ✅ | ❌ |
+| 버전 비교 | ✅ | ❌ |
+| AI 변경점 분석 | ✅ | ❌ |
+| 트림/자르기 | ❌ | ✅ |
+| 자막 생성/편집 | ❌ | ✅ |
+| 텍스트 오버레이 | ❌ | ✅ |
+| 필터/색보정 | ❌ | ✅ |
+| 속도 조절 | ❌ | ✅ |
+
+**규칙:**
+- 영상 피드백 페이지: **조회/피드백** 중심 (편집 불가)
+- 편집 워크스페이스: **편집** 중심 (피드백 작성 불가)
+- 기능 추가 시 위치 원칙 확인
+
+---
+
+### 29.4 Zod 스키마와 TypeScript 타입 불일치
+
+**원인:**
+- Zod 스키마의 `.parse()` 결과 타입과 함수 매개변수 타입이 다름
+- 특히 선택적 필드나 배열에서 발생
+- 에러: `Argument of type '{ field?: T }' is not assignable to parameter of type 'T[]'`
+
+**해결책:**
+```typescript
+// ❌ Bad: Zod 스키마 결과를 직접 전달
+const schema = z.object({
+  parts: z.array(z.object({
+    partNumber: z.number(),
+    etag: z.string(),
+  })),
+});
+
+const { parts } = schema.parse(body);
+// parts 타입: { partNumber: number; etag: string }[]
+
+await completeMultipartUpload('videos', key, uploadId, parts);
+// 에러: UploadPartResult[] 기대하지만 다른 타입 전달됨
+
+// ✅ Good: .transform()으로 정확한 타입 보장
+import { type UploadPartResult } from '@/lib/cloudflare/r2';
+
+const schema = z.object({
+  parts: z.array(z.object({
+    partNumber: z.number().positive(),
+    etag: z.string().min(1),
+  })).transform((parts): UploadPartResult[] =>
+    parts.map(p => ({
+      partNumber: p.partNumber,
+      etag: p.etag,
+    }))
+  ),
+});
+
+const { parts } = schema.parse(body);
+// parts 타입: UploadPartResult[] (정확히 일치)
+
+await completeMultipartUpload('videos', key, uploadId, parts);  // OK
+```
+
+**규칙:**
+- 외부 함수 매개변수로 전달할 데이터는 `.transform()` 사용
+- 반환 타입을 명시적으로 지정: `.transform((data): TargetType => ...)`
+- 복잡한 타입 변환이 필요하면 Zod 스키마에서 처리
+
+---
+
+## 30. 체크리스트 (편집 워크스페이스)
+
+### 편집 워크스페이스 개발 시 (§29)
+- [ ] HLS 플레이어 초기화 전 `videoUrl` 존재 여부 체크 (§29.1)
+- [ ] `videoUrl` 없으면 VideoUploader 표시
+- [ ] 업로드 완료 후 Zustand store 업데이트 (§29.2)
+- [ ] 기능 위치 원칙 확인 (피드백 vs 편집) (§29.3)
+- [ ] Zod 스키마 결과 타입과 함수 매개변수 타입 일치 확인 (§29.4)
+- [ ] 외부 함수 호출 시 `.transform()` 사용
+
+---
+
+## 31. 관련 파일 (편집 워크스페이스)
+
+| 파일 | 설명 |
+|------|------|
+| `src/components/editing/workspace/EditWorkspace.tsx` | 편집 워크스페이스 메인 (조건부 렌더링 패턴) |
+| `src/components/editing/workspace/VideoUploader.tsx` | 영상 업로더 (멀티파트 업로드) |
+| `src/components/editing/workspace/VideoPreview.tsx` | 영상 미리보기 (HLS 초기화 체크) |
+| `src/stores/edit-workspace-store.ts` | 편집 상태 관리 (setVideoUrl/setVideoDuration) |
+| `src/app/api/projects/[id]/edits/[editId]/upload/route.ts` | 업로드 시작 API |
+| `src/app/api/projects/[id]/edits/[editId]/upload/part-url/route.ts` | 추가 part URL API |
+| `src/app/api/projects/[id]/edits/[editId]/upload-complete/route.ts` | 업로드 완료 API (Zod transform 패턴) |

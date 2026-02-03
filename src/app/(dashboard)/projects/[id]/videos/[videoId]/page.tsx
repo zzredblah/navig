@@ -21,6 +21,8 @@ import {
   GitCompare,
   Maximize,
   Minimize,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -28,6 +30,7 @@ import { FeedbackPanel } from '@/components/video/FeedbackPanel';
 import { DrawingCanvas } from '@/components/video/DrawingCanvas';
 import { ApprovalButton } from '@/components/video/ApprovalButton';
 import { VideoCompareModal } from '@/components/video/VideoCompareModal';
+import { VideoDiffAnalyzer } from '@/components/video/VideoDiffAnalyzer';
 import { cn } from '@/lib/utils';
 import { useVideoHotkeys } from '@/hooks/use-global-hotkeys';
 import { useWatermark } from '@/hooks/use-watermark';
@@ -115,6 +118,7 @@ export default function VideoReviewPage({
 
   // 상태
   const [video, setVideo] = useState<VideoVersion | null>(null);
+  const [allVersions, setAllVersions] = useState<Array<{ id: string; version_number: number; change_notes?: string | null }>>([]);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>();
   const [currentUserRole, setCurrentUserRole] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(true);
@@ -128,6 +132,7 @@ export default function VideoReviewPage({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [showAIFeatures, setShowAIFeatures] = useState(false);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -167,6 +172,23 @@ export default function VideoReviewPage({
       }
     }
 
+    async function fetchVersions() {
+      try {
+        const response = await fetch(`/api/projects/${resolvedParams.id}/videos`);
+        if (response.ok) {
+          const data = await response.json();
+          const versions = (data.data || []).map((v: { id: string; version_number: number; change_notes?: string | null }) => ({
+            id: v.id,
+            version_number: v.version_number,
+            change_notes: v.change_notes,
+          }));
+          setAllVersions(versions);
+        }
+      } catch (error) {
+        console.error('버전 목록 조회 실패:', error);
+      }
+    }
+
     async function fetchCurrentUser() {
       try {
         const response = await fetch('/api/auth/me');
@@ -180,6 +202,7 @@ export default function VideoReviewPage({
     }
 
     fetchVideo();
+    fetchVersions();
     fetchCurrentUser();
   }, [resolvedParams.id, resolvedParams.videoId, router]);
 
@@ -727,6 +750,35 @@ export default function VideoReviewPage({
               <p className="mt-2 text-sm text-gray-300">{video.change_notes}</p>
             )}
           </div>
+
+          {/* AI 기능 섹션 - 영상 비교 분석만 (자막 생성은 편집 워크스페이스에서) */}
+          {allVersions.length > 1 && (
+            <div className="border-t border-gray-800 bg-gray-900/50">
+              <button
+                onClick={() => setShowAIFeatures(!showAIFeatures)}
+                className="w-full flex items-center justify-between px-4 py-3 text-white hover:bg-gray-800/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <GitCompare className="h-4 w-4 text-primary-400" />
+                  <span className="text-sm font-medium">AI 변경점 분석</span>
+                </div>
+                {showAIFeatures ? (
+                  <ChevronUp className="h-4 w-4 text-gray-400" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-gray-400" />
+                )}
+              </button>
+              {showAIFeatures && (
+                <div className="p-4 bg-white border-t border-gray-200">
+                  <VideoDiffAnalyzer
+                    currentVersionId={video.id}
+                    versions={allVersions}
+                    onMarkerClick={handleSeek}
+                  />
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 피드백 패널 */}
