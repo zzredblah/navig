@@ -5,15 +5,18 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { Wand2 } from 'lucide-react';
 
 export function TrimPanel() {
   const {
     videoDuration,
     metadata,
+    selectionRange,
     setTrimStart,
     setTrimEnd,
     setCurrentTime,
     pushHistory,
+    clearSelectionRange,
   } = useEditWorkspaceStore();
 
   const formatTime = (seconds: number) => {
@@ -67,16 +70,43 @@ export function TrimPanel() {
     setTrimEnd(videoDuration);
   };
 
+  // 타임라인 선택 범위를 트림에 적용
+  const handleApplySelection = () => {
+    if (!selectionRange) return;
+    pushHistory();
+    setTrimStart(selectionRange.startTime);
+    setTrimEnd(selectionRange.endTime);
+    clearSelectionRange();
+  };
+
   const trimmedDuration = metadata.trim.endTime - metadata.trim.startTime;
+  const hasSelection = selectionRange && selectionRange.endTime > selectionRange.startTime;
 
   return (
     <div className="p-4 space-y-6">
       <div>
-        <h3 className="text-sm font-semibold text-gray-900 mb-4">자르기 (트림)</h3>
+        <h3 className="text-sm font-semibold text-gray-900 mb-2">자르기 (트림)</h3>
         <p className="text-xs text-gray-500 mb-4">
           영상의 시작과 끝 부분을 조정하세요
         </p>
       </div>
+
+      {/* 타임라인 선택 범위 적용 */}
+      {hasSelection && (
+        <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg space-y-2">
+          <p className="text-xs text-yellow-700">
+            타임라인에서 {formatTime(selectionRange!.startTime)} - {formatTime(selectionRange!.endTime)} 구간이 선택됨
+          </p>
+          <Button
+            size="sm"
+            onClick={handleApplySelection}
+            className="w-full bg-yellow-600 hover:bg-yellow-700"
+          >
+            <Wand2 className="h-3.5 w-3.5 mr-1.5" />
+            선택 구간으로 트림 적용
+          </Button>
+        </div>
+      )}
 
       {/* 슬라이더 */}
       <div className="space-y-2">

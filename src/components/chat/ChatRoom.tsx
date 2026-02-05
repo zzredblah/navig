@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
-import { Loader2, ArrowDown, Users, FolderOpen, MoreVertical, LogOut, Trash2, X, Upload } from 'lucide-react';
+import { Loader2, Users, FolderOpen, MoreVertical, LogOut, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -25,6 +25,8 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
+import { DragDropOverlay } from './DragDropOverlay';
+import { ScrollToBottomButton } from './ScrollToBottomButton';
 import {
   ChatRoomWithDetails,
   ChatMessageWithDetails,
@@ -509,6 +511,21 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
     }
   };
 
+  // 스크롤 버튼 클릭 핸들러
+  const handleScrollToBottom = useCallback(() => {
+    scrollToBottomSmooth();
+    setNewMessageCount(0);
+    updateReadStatus();
+
+    // 읽지 않은 메시지 읽음 처리
+    const unreadMessageIds = messages
+      .filter((m) => m.sender_id !== currentUserId && (m.unread_count || 0) > 0)
+      .map((m) => m.id);
+    if (unreadMessageIds.length > 0) {
+      markMessagesAsRead(unreadMessageIds);
+    }
+  }, [scrollToBottomSmooth, updateReadStatus, messages, currentUserId, markMessagesAsRead]);
+
   // 메시지 전송 (낙관적 업데이트)
   const handleSend = async (
     content: string,
@@ -849,19 +866,7 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
       onDrop={handleDrop}
     >
       {/* 드래그 앤 드롭 오버레이 */}
-      {isDragging && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-primary-500/10 backdrop-blur-sm pointer-events-none">
-          <div className="flex flex-col items-center gap-3 p-8 bg-white rounded-2xl shadow-xl border-2 border-dashed border-primary-400">
-            <div className="w-16 h-16 rounded-full bg-primary-100 flex items-center justify-center">
-              <Upload className="h-8 w-8 text-primary-600" />
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-medium text-gray-900">파일을 여기에 놓으세요</p>
-              <p className="text-sm text-gray-500 mt-1">이미지, 영상, 문서 파일 지원</p>
-            </div>
-          </div>
-        </div>
-      )}
+      <DragDropOverlay show={isDragging} />
 
       {/* 헤더 - 패널 모드가 아닐 때만 표시 */}
       {!isPanel && (
@@ -1081,36 +1086,11 @@ export function ChatRoom({ roomId, currentUserId: propUserId, onBack, isPanel = 
       </div>
 
       {/* 새 메시지 / 스크롤 버튼 */}
-      {(showScrollButton || newMessageCount > 0) && (
-        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-10">
-          <Button
-            variant={newMessageCount > 0 ? 'default' : 'secondary'}
-            size="sm"
-            className={newMessageCount > 0
-              ? 'rounded-full shadow-lg bg-primary-600 hover:bg-primary-700 text-white px-4'
-              : 'rounded-full shadow-lg'
-            }
-            onClick={() => {
-              scrollToBottomSmooth();
-              setNewMessageCount(0);
-              updateReadStatus();
-
-              // 읽지 않은 메시지 읽음 처리
-              const unreadMessageIds = messages
-                .filter((m) => m.sender_id !== currentUserId && (m.unread_count || 0) > 0)
-                .map((m) => m.id);
-              if (unreadMessageIds.length > 0) {
-                markMessagesAsRead(unreadMessageIds);
-              }
-            }}
-          >
-            <ArrowDown className="h-4 w-4" />
-            {newMessageCount > 0 && (
-              <span className="ml-1">새 메시지 {newMessageCount}개</span>
-            )}
-          </Button>
-        </div>
-      )}
+      <ScrollToBottomButton
+        show={showScrollButton}
+        newMessageCount={newMessageCount}
+        onClick={handleScrollToBottom}
+      />
 
       {/* 입력 */}
       <div className="shrink-0">

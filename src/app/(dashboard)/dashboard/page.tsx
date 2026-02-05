@@ -1,6 +1,6 @@
 import { Suspense } from 'react';
 import { createClient, createAdminClient } from '@/lib/supabase/server';
-import { ProjectStatusChart, DocumentStatusChart } from '@/components/dashboard/DashboardCharts';
+import { ProjectStatusChart, DocumentStatusChart } from '@/components/dashboard/DashboardChartsLazy';
 import { StatCards } from '@/components/dashboard/StatCards';
 import { UrgentSection } from '@/components/dashboard/UrgentSection';
 import { ActivityFeed } from '@/components/dashboard/ActivityFeed';

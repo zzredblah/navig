@@ -13,12 +13,16 @@ import {
 import { z } from 'zod';
 import { sanitizeStreamUrl, enableDownload } from '@/lib/cloudflare/stream';
 
-// Request schema
+// Request schema - video_version_id 또는 edit_project_id 중 하나 필수
 const generateSubtitleSchema = z.object({
-  video_version_id: z.string().uuid(),
+  video_version_id: z.string().uuid().optional(),
+  edit_project_id: z.string().uuid().optional(),
   language: z.string().length(2).default('ko'),
   format: z.enum(['srt', 'vtt', 'json']).default('srt'),
-});
+}).refine(
+  (data) => data.video_version_id || data.edit_project_id,
+  { message: 'video_version_id 또는 edit_project_id 중 하나가 필요합니다' }
+);
 
 // POST /api/ai/subtitles - Generate subtitles for a video
 export async function POST(request: NextRequest) {
@@ -53,7 +57,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { video_version_id, language, format } = validationResult.data;
+    const { video_version_id, edit_project_id, language, format } = validationResult.data;
     const adminClient = createAdminClient();
 
     // Check AI usage limits
@@ -65,96 +69,191 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get video version and verify access
-    const { data: videoVersion, error: videoError } = await adminClient
-      .from('video_versions')
-      .select('id, project_id, file_url, download_url, hls_url, stream_video_id, file_size, duration')
-      .eq('id', video_version_id)
-      .single();
+    let audioSourceUrl: string | null = null;
+    let projectId: string | null = null;
 
-    if (videoError || !videoVersion) {
-      return NextResponse.json(
-        { error: '영상을 찾을 수 없습니다' },
-        { status: 404 }
-      );
-    }
+    // Case 1: video_version_id가 제공된 경우 (기존 영상 피드백 페이지)
+    if (video_version_id) {
+      const { data: videoVersion, error: videoError } = await adminClient
+        .from('video_versions')
+        .select('id, project_id, file_url, download_url, hls_url, stream_video_id, file_size, duration')
+        .eq('id', video_version_id)
+        .single();
 
-    // Determine which URL to use (prioritize: file_url > stream download)
-    // Note: hls_url (HLS stream) cannot be used for Whisper - needs actual file
-    let audioSourceUrl: string | null = videoVersion.file_url || null;
+      if (videoError || !videoVersion) {
+        return NextResponse.json(
+          { error: '영상을 찾을 수 없습니다' },
+          { status: 404 }
+        );
+      }
 
-    // If no file_url but has stream_video_id, get download URL from Stream API
-    if (!audioSourceUrl && videoVersion.stream_video_id) {
-      console.log('[Subtitles] Stream video detected, checking download availability...');
-      try {
-        const downloadResult = await enableDownload(videoVersion.stream_video_id);
+      projectId = videoVersion.project_id;
 
-        if (downloadResult.ready && downloadResult.url) {
-          audioSourceUrl = downloadResult.url;
-          console.log('[Subtitles] Stream download URL:', audioSourceUrl);
+      // Determine which URL to use (prioritize: file_url > stream download)
+      audioSourceUrl = videoVersion.file_url || null;
 
-          // Update DB with download URL
-          await adminClient
-            .from('video_versions')
-            .update({ download_url: audioSourceUrl })
-            .eq('id', video_version_id);
-        } else {
-          console.log('[Subtitles] Stream download not ready yet');
+      // If no file_url but has stream_video_id, get download URL from Stream API
+      if (!audioSourceUrl && videoVersion.stream_video_id) {
+        console.log('[Subtitles] Stream video detected, checking download availability...');
+        try {
+          const downloadResult = await enableDownload(videoVersion.stream_video_id);
+
+          if (downloadResult.ready && downloadResult.url) {
+            audioSourceUrl = downloadResult.url;
+            console.log('[Subtitles] Stream download URL:', audioSourceUrl);
+
+            await adminClient
+              .from('video_versions')
+              .update({ download_url: audioSourceUrl })
+              .eq('id', video_version_id);
+          } else {
+            console.log('[Subtitles] Stream download not ready yet');
+          }
+        } catch (streamError) {
+          console.error('[Subtitles] Failed to get Stream download:', streamError);
         }
-      } catch (streamError) {
-        console.error('[Subtitles] Failed to get Stream download:', streamError);
+      }
+
+      // Fallback to existing download_url
+      if (!audioSourceUrl && videoVersion.download_url) {
+        audioSourceUrl = sanitizeStreamUrl(videoVersion.download_url) || videoVersion.download_url;
+      }
+
+      if (!audioSourceUrl) {
+        return NextResponse.json(
+          {
+            error: '자막 생성을 위한 영상 파일을 가져올 수 없습니다.',
+            details: videoVersion.stream_video_id
+              ? 'Cloudflare Stream 다운로드가 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.'
+              : '이 영상은 원본 파일이 없습니다.'
+          },
+          { status: 400 }
+        );
+      }
+    }
+    // Case 2: edit_project_id가 제공된 경우 (편집 워크스페이스)
+    else if (edit_project_id) {
+      const { data: editProject, error: editError } = await adminClient
+        .from('edit_projects')
+        .select(`
+          id, project_id, source_url, source_video_id, created_by,
+          source_video:video_versions!source_video_id(file_url, download_url, hls_url, stream_video_id)
+        `)
+        .eq('id', edit_project_id)
+        .single();
+
+      if (editError || !editProject) {
+        return NextResponse.json(
+          { error: '편집 프로젝트를 찾을 수 없습니다' },
+          { status: 404 }
+        );
+      }
+
+      projectId = editProject.project_id;
+
+      // source_video가 있으면 해당 영상의 URL 사용
+      if (editProject.source_video) {
+        const sv = editProject.source_video as {
+          file_url?: string;
+          download_url?: string;
+          hls_url?: string;
+          stream_video_id?: string;
+        };
+        audioSourceUrl = sv.file_url || sv.download_url || null;
+
+        // Stream 다운로드 시도
+        if (!audioSourceUrl && sv.stream_video_id) {
+          try {
+            const downloadResult = await enableDownload(sv.stream_video_id);
+            if (downloadResult.ready && downloadResult.url) {
+              audioSourceUrl = downloadResult.url;
+            }
+          } catch (streamError) {
+            console.error('[Subtitles] Failed to get Stream download:', streamError);
+          }
+        }
+      }
+
+      // source_url (직접 업로드)이 있으면 사용
+      if (!audioSourceUrl && editProject.source_url) {
+        audioSourceUrl = editProject.source_url;
+      }
+
+      if (!audioSourceUrl) {
+        return NextResponse.json(
+          { error: '자막 생성을 위한 영상 파일이 없습니다. 먼저 영상을 업로드해주세요.' },
+          { status: 400 }
+        );
+      }
+
+      // 편집 프로젝트 생성자만 접근 가능
+      if (editProject.created_by !== user.id) {
+        // 프로젝트 멤버/소유자 체크
+        const { data: accessCheck } = await adminClient
+          .from('project_members')
+          .select('user_id')
+          .eq('project_id', projectId)
+          .eq('user_id', user.id)
+          .not('joined_at', 'is', null)
+          .single();
+
+        const { data: ownerCheck } = await adminClient
+          .from('projects')
+          .select('client_id')
+          .eq('id', projectId)
+          .eq('client_id', user.id)
+          .single();
+
+        if (!accessCheck && !ownerCheck) {
+          return NextResponse.json(
+            { error: '이 편집 프로젝트에 접근할 권한이 없습니다' },
+            { status: 403 }
+          );
+        }
       }
     }
 
-    // Fallback to existing download_url if still no URL
-    if (!audioSourceUrl && videoVersion.download_url) {
-      audioSourceUrl = sanitizeStreamUrl(videoVersion.download_url) || videoVersion.download_url;
+    console.log('[Subtitles] Final URL:', audioSourceUrl?.substring(0, 100));
+
+    // Check project access (video_version_id인 경우만 - edit_project_id는 위에서 체크)
+    if (video_version_id && projectId) {
+      const { data: accessCheck } = await adminClient
+        .from('project_members')
+        .select('user_id')
+        .eq('project_id', projectId)
+        .eq('user_id', user.id)
+        .not('joined_at', 'is', null)
+        .single();
+
+      const { data: ownerCheck } = await adminClient
+        .from('projects')
+        .select('client_id')
+        .eq('id', projectId)
+        .eq('client_id', user.id)
+        .single();
+
+      if (!accessCheck && !ownerCheck) {
+        return NextResponse.json(
+          { error: '이 영상에 접근할 권한이 없습니다' },
+          { status: 403 }
+        );
+      }
     }
 
-    if (!audioSourceUrl) {
-      return NextResponse.json(
-        {
-          error: '자막 생성을 위한 영상 파일을 가져올 수 없습니다.',
-          details: videoVersion.stream_video_id
-            ? 'Cloudflare Stream 다운로드가 아직 준비되지 않았습니다. 잠시 후 다시 시도해주세요.'
-            : '이 영상은 원본 파일이 없습니다.'
-        },
-        { status: 400 }
-      );
-    }
-
-    console.log('[Subtitles] Final URL:', audioSourceUrl.substring(0, 100));
-
-    // Check project access
-    const { data: accessCheck } = await adminClient
-      .from('project_members')
-      .select('user_id')
-      .eq('project_id', videoVersion.project_id)
-      .eq('user_id', user.id)
-      .not('joined_at', 'is', null)
-      .single();
-
-    const { data: ownerCheck } = await adminClient
-      .from('projects')
-      .select('client_id')
-      .eq('id', videoVersion.project_id)
-      .eq('client_id', user.id)
-      .single();
-
-    if (!accessCheck && !ownerCheck) {
-      return NextResponse.json(
-        { error: '이 영상에 접근할 권한이 없습니다' },
-        { status: 403 }
-      );
-    }
-
-    // Check if subtitle already exists for this video/language
-    const { data: existingSubtitle } = await adminClient
+    // Check if subtitle already exists
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let existingSubtitleQuery: any = adminClient
       .from('video_subtitles')
       .select('id, status')
-      .eq('video_version_id', video_version_id)
-      .eq('language', language)
-      .single();
+      .eq('language', language);
+
+    if (video_version_id) {
+      existingSubtitleQuery = existingSubtitleQuery.eq('video_version_id', video_version_id);
+    } else if (edit_project_id) {
+      existingSubtitleQuery = existingSubtitleQuery.eq('edit_project_id', edit_project_id);
+    }
+
+    const { data: existingSubtitle } = await existingSubtitleQuery.single();
 
     if (existingSubtitle) {
       if (existingSubtitle.status === 'processing') {
@@ -171,18 +270,27 @@ export async function POST(request: NextRequest) {
     }
 
     // Create subtitle record with processing status
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const insertData: Record<string, any> = {
+      language,
+      format,
+      content: '',
+      status: 'processing',
+      is_auto_generated: true,
+      created_by: user.id,
+      metadata: { model: 'whisper-1' },
+    };
+
+    if (video_version_id) {
+      insertData.video_version_id = video_version_id;
+    }
+    if (edit_project_id) {
+      insertData.edit_project_id = edit_project_id;
+    }
+
     const { data: subtitleRecord, error: createError } = await adminClient
       .from('video_subtitles')
-      .insert({
-        video_version_id,
-        language,
-        format,
-        content: '',
-        status: 'processing',
-        is_auto_generated: true,
-        created_by: user.id,
-        metadata: { model: 'whisper-1' },
-      })
+      .insert(insertData as never)
       .select()
       .single();
 
@@ -326,7 +434,8 @@ export async function POST(request: NextRequest) {
 
       // Record AI usage
       await recordAIUsage(user.id, 'subtitle_generation', {
-        video_version_id,
+        video_version_id: video_version_id || null,
+        edit_project_id: edit_project_id || null,
         language,
         format,
         duration_seconds: transcription.duration,
@@ -364,7 +473,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET /api/ai/subtitles?video_version_id=xxx - Get subtitles for a video
+// GET /api/ai/subtitles?video_version_id=xxx OR ?edit_project_id=xxx
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -378,58 +487,112 @@ export async function GET(request: NextRequest) {
     }
 
     const videoVersionId = request.nextUrl.searchParams.get('video_version_id');
-    if (!videoVersionId) {
+    const editProjectId = request.nextUrl.searchParams.get('edit_project_id');
+
+    if (!videoVersionId && !editProjectId) {
       return NextResponse.json(
-        { error: 'video_version_id가 필요합니다' },
+        { error: 'video_version_id 또는 edit_project_id가 필요합니다' },
         { status: 400 }
       );
     }
 
     const adminClient = createAdminClient();
+    let projectId: string | null = null;
 
-    // Get video version to check access
-    const { data: videoVersion } = await adminClient
-      .from('video_versions')
-      .select('project_id')
-      .eq('id', videoVersionId)
-      .single();
+    // Case 1: video_version_id로 조회
+    if (videoVersionId) {
+      const { data: videoVersion } = await adminClient
+        .from('video_versions')
+        .select('project_id')
+        .eq('id', videoVersionId)
+        .single();
 
-    if (!videoVersion) {
-      return NextResponse.json(
-        { error: '영상을 찾을 수 없습니다' },
-        { status: 404 }
-      );
+      if (!videoVersion) {
+        return NextResponse.json(
+          { error: '영상을 찾을 수 없습니다' },
+          { status: 404 }
+        );
+      }
+
+      projectId = videoVersion.project_id;
+    }
+    // Case 2: edit_project_id로 조회
+    else if (editProjectId) {
+      const { data: editProject } = await adminClient
+        .from('edit_projects')
+        .select('project_id, created_by')
+        .eq('id', editProjectId)
+        .single();
+
+      if (!editProject) {
+        return NextResponse.json(
+          { error: '편집 프로젝트를 찾을 수 없습니다' },
+          { status: 404 }
+        );
+      }
+
+      projectId = editProject.project_id;
+
+      // 편집 프로젝트 생성자는 바로 접근 가능
+      if (editProject.created_by === user.id) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: subtitles, error } = await (adminClient
+          .from('video_subtitles')
+          .select('*') as any)
+          .eq('edit_project_id', editProjectId)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('[Subtitles] Get error:', error);
+          return NextResponse.json(
+            { error: '자막 조회에 실패했습니다' },
+            { status: 500 }
+          );
+        }
+
+        return NextResponse.json({ data: subtitles });
+      }
     }
 
     // Check project access
-    const { data: accessCheck } = await adminClient
-      .from('project_members')
-      .select('user_id')
-      .eq('project_id', videoVersion.project_id)
-      .eq('user_id', user.id)
-      .not('joined_at', 'is', null)
-      .single();
+    if (projectId) {
+      const { data: accessCheck } = await adminClient
+        .from('project_members')
+        .select('user_id')
+        .eq('project_id', projectId)
+        .eq('user_id', user.id)
+        .not('joined_at', 'is', null)
+        .single();
 
-    const { data: ownerCheck } = await adminClient
-      .from('projects')
-      .select('client_id')
-      .eq('id', videoVersion.project_id)
-      .eq('client_id', user.id)
-      .single();
+      const { data: ownerCheck } = await adminClient
+        .from('projects')
+        .select('client_id')
+        .eq('id', projectId)
+        .eq('client_id', user.id)
+        .single();
 
-    if (!accessCheck && !ownerCheck) {
-      return NextResponse.json(
-        { error: '접근 권한이 없습니다' },
-        { status: 403 }
-      );
+      if (!accessCheck && !ownerCheck) {
+        return NextResponse.json(
+          { error: '접근 권한이 없습니다' },
+          { status: 403 }
+        );
+      }
     }
 
-    // Get all subtitles for this video
-    const { data: subtitles, error } = await adminClient
+    // Get subtitles
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let query: any = adminClient
       .from('video_subtitles')
       .select('*')
-      .eq('video_version_id', videoVersionId)
       .order('created_at', { ascending: false });
+
+    if (videoVersionId) {
+      query = query.eq('video_version_id', videoVersionId);
+    } else if (editProjectId) {
+      query = query.eq('edit_project_id', editProjectId);
+    }
+
+    const { data: subtitles, error } = await query;
 
     if (error) {
       console.error('[Subtitles] Get error:', error);

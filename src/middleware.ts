@@ -57,33 +57,28 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  // 세션 갱신
-  const { data: { user } } = await supabase.auth.getUser();
-
   const pathname = request.nextUrl.pathname;
 
-  // 공개 경로 처리
+  // 공개 경로는 세션 갱신만 하고 빠르게 통과
   if (isPublicPath(pathname)) {
+    // getSession은 getUser보다 빠름 (서버 검증 없이 토큰만 확인)
+    const { data: { session } } = await supabase.auth.getSession();
+
     // 로그인된 사용자가 랜딩/로그인/회원가입 페이지 접근 시 대시보드로 리다이렉트
-    if (user && (pathname === '/' || pathname === '/login' || pathname === '/signup')) {
+    if (session && (pathname === '/' || pathname === '/login' || pathname === '/signup')) {
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
     return response;
   }
 
-  // 인증되지 않은 사용자는 로그인 페이지로 리다이렉트
-  if (!user) {
+  // 보호된 경로: getSession으로 빠르게 확인 (Layout에서 getUser로 검증)
+  const { data: { session } } = await supabase.auth.getSession();
+
+  // 세션이 없으면 로그인 페이지로 리다이렉트
+  if (!session) {
     const redirectUrl = new URL('/login', request.url);
     redirectUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(redirectUrl);
-  }
-
-  // 클라이언트 역할 사용자 리다이렉션
-  // 클라이언트 역할인 경우 /client 경로만 접근 가능
-  // (프로필 조회가 필요하므로 여기서는 /client 경로 접근 허용만 확인)
-  if (pathname.startsWith('/dashboard') || pathname.startsWith('/projects')) {
-    // 클라이언트 포털로 리다이렉션은 클라이언트 사이드에서 처리
-    // 미들웨어에서 프로필 조회는 추가 비용이 발생하므로 생략
   }
 
   return response;

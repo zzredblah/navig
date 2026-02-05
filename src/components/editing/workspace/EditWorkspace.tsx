@@ -12,6 +12,7 @@ import { TextPanel } from './panels/TextPanel';
 import { FilterPanel } from './panels/FilterPanel';
 import { SpeedPanel } from './panels/SpeedPanel';
 import { AudioPanel } from './panels/AudioPanel';
+import { SubtitlePanel } from './panels/SubtitlePanel';
 import { WorkspaceToolbar } from './toolbar/WorkspaceToolbar';
 import { PlaybackControls } from './toolbar/PlaybackControls';
 import { Loader2 } from 'lucide-react';
@@ -157,9 +158,12 @@ export function EditWorkspace({ editProject, projectId }: EditWorkspaceProps) {
         return <AudioPanel />;
       case 'subtitle':
         return (
-          <div className="p-4 text-sm text-gray-500">
-            자막 기능은 준비 중입니다
-          </div>
+          <SubtitlePanel
+            editProjectId={editProject.id}
+            sourceVideoId={editProject.source_video_id}
+            videoUrl={editProject.source_url}
+            hlsUrl={editProject.source_video?.hls_url || null}
+          />
         );
       default:
         return null;

@@ -3,6 +3,14 @@
  * Supabase 스키마와 호환되는 타입 정의
  */
 
+// Import subscription enum types (defined in subscription.ts)
+import type {
+  SubscriptionStatus,
+  PaymentStatus,
+  PaymentMethod,
+  BillingCycle,
+} from './subscription';
+
 export type Json =
   | string
   | number
@@ -42,6 +50,28 @@ export type NotificationType =
   | 'project_invite'
   | 'deadline_reminder'
   | 'chat_message';
+
+// 채팅 관련
+export type ChatRoomType = 'project' | 'direct';
+
+// 커뮤니티 관련
+export type VoteType = 'up' | 'down';
+export type VoteTargetType = 'post' | 'answer';
+
+// 활동 로그 관련
+export type ActivityType =
+  | 'project_created'
+  | 'member_invited'
+  | 'member_joined'
+  | 'video_uploaded'
+  | 'feedback_created'
+  | 'feedback_resolved'
+  | 'document_created'
+  | 'document_updated'
+  | 'version_uploaded'
+  | 'video_approved';
+
+export type ActivityTargetType = 'project' | 'member' | 'video' | 'feedback' | 'document' | 'version';
 
 export interface TemplateField {
   name: string;
@@ -1455,6 +1485,792 @@ export interface Database {
           }
         ];
       };
+      // ============================================
+      // Chat Tables
+      // ============================================
+      chat_rooms: {
+        Row: {
+          id: string;
+          type: ChatRoomType;
+          project_id: string | null;
+          name: string | null;
+          last_message_at: string | null;
+          last_message_preview: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          type: ChatRoomType;
+          project_id?: string | null;
+          name?: string | null;
+          last_message_at?: string | null;
+          last_message_preview?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          type?: ChatRoomType;
+          project_id?: string | null;
+          name?: string | null;
+          last_message_at?: string | null;
+          last_message_preview?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'chat_rooms_project_id_fkey';
+            columns: ['project_id'];
+            referencedRelation: 'projects';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      chat_room_members: {
+        Row: {
+          id: string;
+          room_id: string;
+          user_id: string;
+          last_read_at: string;
+          notifications_enabled: boolean;
+          joined_at: string;
+          cleared_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          room_id: string;
+          user_id: string;
+          last_read_at?: string;
+          notifications_enabled?: boolean;
+          joined_at?: string;
+          cleared_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          room_id?: string;
+          user_id?: string;
+          last_read_at?: string;
+          notifications_enabled?: boolean;
+          joined_at?: string;
+          cleared_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'chat_room_members_room_id_fkey';
+            columns: ['room_id'];
+            referencedRelation: 'chat_rooms';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'chat_room_members_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      chat_messages: {
+        Row: {
+          id: string;
+          room_id: string;
+          sender_id: string;
+          content: string;
+          reply_to_id: string | null;
+          mentions: string[];
+          attachments: Json;
+          is_edited: boolean;
+          is_deleted: boolean;
+          deleted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          room_id: string;
+          sender_id: string;
+          content: string;
+          reply_to_id?: string | null;
+          mentions?: string[];
+          attachments?: Json;
+          is_edited?: boolean;
+          is_deleted?: boolean;
+          deleted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          room_id?: string;
+          sender_id?: string;
+          content?: string;
+          reply_to_id?: string | null;
+          mentions?: string[];
+          attachments?: Json;
+          is_edited?: boolean;
+          is_deleted?: boolean;
+          deleted_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'chat_messages_room_id_fkey';
+            columns: ['room_id'];
+            referencedRelation: 'chat_rooms';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'chat_messages_sender_id_fkey';
+            columns: ['sender_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'chat_messages_reply_to_id_fkey';
+            columns: ['reply_to_id'];
+            referencedRelation: 'chat_messages';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      chat_message_reactions: {
+        Row: {
+          id: string;
+          message_id: string;
+          user_id: string;
+          emoji: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          message_id: string;
+          user_id: string;
+          emoji: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          message_id?: string;
+          user_id?: string;
+          emoji?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'chat_message_reactions_message_id_fkey';
+            columns: ['message_id'];
+            referencedRelation: 'chat_messages';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'chat_message_reactions_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      chat_message_reads: {
+        Row: {
+          id: string;
+          message_id: string;
+          user_id: string;
+          read_at: string;
+        };
+        Insert: {
+          id?: string;
+          message_id: string;
+          user_id: string;
+          read_at?: string;
+        };
+        Update: {
+          id?: string;
+          message_id?: string;
+          user_id?: string;
+          read_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'chat_message_reads_message_id_fkey';
+            columns: ['message_id'];
+            referencedRelation: 'chat_messages';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'chat_message_reads_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      chat_message_deletions: {
+        Row: {
+          id: string;
+          message_id: string;
+          user_id: string;
+          deleted_at: string;
+        };
+        Insert: {
+          id?: string;
+          message_id: string;
+          user_id: string;
+          deleted_at?: string;
+        };
+        Update: {
+          id?: string;
+          message_id?: string;
+          user_id?: string;
+          deleted_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'chat_message_deletions_message_id_fkey';
+            columns: ['message_id'];
+            referencedRelation: 'chat_messages';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'chat_message_deletions_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      // ============================================
+      // Subscription Tables
+      // ============================================
+      subscription_plans: {
+        Row: {
+          id: string;
+          name: string;
+          display_name: string;
+          description: string | null;
+          price_monthly: number;
+          price_yearly: number;
+          limits: Json;
+          features: Json;
+          sort_order: number;
+          is_recommended: boolean;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          display_name: string;
+          description?: string | null;
+          price_monthly?: number;
+          price_yearly?: number;
+          limits?: Json;
+          features?: Json;
+          sort_order?: number;
+          is_recommended?: boolean;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          display_name?: string;
+          description?: string | null;
+          price_monthly?: number;
+          price_yearly?: number;
+          limits?: Json;
+          features?: Json;
+          sort_order?: number;
+          is_recommended?: boolean;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      subscriptions: {
+        Row: {
+          id: string;
+          user_id: string;
+          plan_id: string;
+          status: SubscriptionStatus;
+          billing_cycle: BillingCycle;
+          current_period_start: string;
+          current_period_end: string;
+          cancel_at_period_end: boolean;
+          canceled_at: string | null;
+          billing_key: string | null;
+          customer_key: string | null;
+          trial_start: string | null;
+          trial_end: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          plan_id: string;
+          status?: SubscriptionStatus;
+          billing_cycle?: BillingCycle;
+          current_period_start?: string;
+          current_period_end: string;
+          cancel_at_period_end?: boolean;
+          canceled_at?: string | null;
+          billing_key?: string | null;
+          customer_key?: string | null;
+          trial_start?: string | null;
+          trial_end?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          plan_id?: string;
+          status?: SubscriptionStatus;
+          billing_cycle?: BillingCycle;
+          current_period_start?: string;
+          current_period_end?: string;
+          cancel_at_period_end?: boolean;
+          canceled_at?: string | null;
+          billing_key?: string | null;
+          customer_key?: string | null;
+          trial_start?: string | null;
+          trial_end?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'subscriptions_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'subscriptions_plan_id_fkey';
+            columns: ['plan_id'];
+            referencedRelation: 'subscription_plans';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      payments: {
+        Row: {
+          id: string;
+          subscription_id: string | null;
+          user_id: string;
+          amount: number;
+          currency: string;
+          status: PaymentStatus;
+          payment_key: string | null;
+          order_id: string;
+          method: PaymentMethod | null;
+          order_name: string;
+          receipt_url: string | null;
+          refunded_amount: number;
+          refund_reason: string | null;
+          refunded_at: string | null;
+          failure_code: string | null;
+          failure_message: string | null;
+          metadata: Json;
+          paid_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          subscription_id?: string | null;
+          user_id: string;
+          amount: number;
+          currency?: string;
+          status?: PaymentStatus;
+          payment_key?: string | null;
+          order_id: string;
+          method?: PaymentMethod | null;
+          order_name: string;
+          receipt_url?: string | null;
+          refunded_amount?: number;
+          refund_reason?: string | null;
+          refunded_at?: string | null;
+          failure_code?: string | null;
+          failure_message?: string | null;
+          metadata?: Json;
+          paid_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          subscription_id?: string | null;
+          user_id?: string;
+          amount?: number;
+          currency?: string;
+          status?: PaymentStatus;
+          payment_key?: string | null;
+          order_id?: string;
+          method?: PaymentMethod | null;
+          order_name?: string;
+          receipt_url?: string | null;
+          refunded_amount?: number;
+          refund_reason?: string | null;
+          refunded_at?: string | null;
+          failure_code?: string | null;
+          failure_message?: string | null;
+          metadata?: Json;
+          paid_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'payments_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'payments_subscription_id_fkey';
+            columns: ['subscription_id'];
+            referencedRelation: 'subscriptions';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      usage_records: {
+        Row: {
+          id: string;
+          user_id: string;
+          period_start: string;
+          period_end: string;
+          projects_count: number;
+          storage_used_bytes: number;
+          members_invited: number;
+          videos_uploaded: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          period_start: string;
+          period_end: string;
+          projects_count?: number;
+          storage_used_bytes?: number;
+          members_invited?: number;
+          videos_uploaded?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          period_start?: string;
+          period_end?: string;
+          projects_count?: number;
+          storage_used_bytes?: number;
+          members_invited?: number;
+          videos_uploaded?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'usage_records_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      // ============================================
+      // Community Tables
+      // ============================================
+      tags: {
+        Row: {
+          id: string;
+          name: string;
+          description: string | null;
+          color: string;
+          usage_count: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          description?: string | null;
+          color?: string;
+          usage_count?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          description?: string | null;
+          color?: string;
+          usage_count?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      posts: {
+        Row: {
+          id: string;
+          author_id: string;
+          title: string;
+          content: string;
+          view_count: number;
+          vote_count: number;
+          answer_count: number;
+          is_solved: boolean;
+          accepted_answer_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          author_id: string;
+          title: string;
+          content: string;
+          view_count?: number;
+          vote_count?: number;
+          answer_count?: number;
+          is_solved?: boolean;
+          accepted_answer_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          author_id?: string;
+          title?: string;
+          content?: string;
+          view_count?: number;
+          vote_count?: number;
+          answer_count?: number;
+          is_solved?: boolean;
+          accepted_answer_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'posts_author_id_fkey';
+            columns: ['author_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'posts_accepted_answer_id_fkey';
+            columns: ['accepted_answer_id'];
+            referencedRelation: 'answers';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      post_tags: {
+        Row: {
+          post_id: string;
+          tag_id: string;
+        };
+        Insert: {
+          post_id: string;
+          tag_id: string;
+        };
+        Update: {
+          post_id?: string;
+          tag_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'post_tags_post_id_fkey';
+            columns: ['post_id'];
+            referencedRelation: 'posts';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'post_tags_tag_id_fkey';
+            columns: ['tag_id'];
+            referencedRelation: 'tags';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      answers: {
+        Row: {
+          id: string;
+          post_id: string;
+          author_id: string;
+          content: string;
+          vote_count: number;
+          is_accepted: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          post_id: string;
+          author_id: string;
+          content: string;
+          vote_count?: number;
+          is_accepted?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          post_id?: string;
+          author_id?: string;
+          content?: string;
+          vote_count?: number;
+          is_accepted?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'answers_post_id_fkey';
+            columns: ['post_id'];
+            referencedRelation: 'posts';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'answers_author_id_fkey';
+            columns: ['author_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      votes: {
+        Row: {
+          id: string;
+          user_id: string;
+          target_type: VoteTargetType;
+          target_id: string;
+          vote_type: VoteType;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          target_type: VoteTargetType;
+          target_id: string;
+          vote_type: VoteType;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          target_type?: VoteTargetType;
+          target_id?: string;
+          vote_type?: VoteType;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'votes_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      // ============================================
+      // Activity & AI Tables
+      // ============================================
+      activity_logs: {
+        Row: {
+          id: string;
+          project_id: string;
+          user_id: string;
+          activity_type: string;
+          title: string;
+          description: string | null;
+          target_type: string | null;
+          target_id: string | null;
+          metadata: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          user_id: string;
+          activity_type: string;
+          title: string;
+          description?: string | null;
+          target_type?: string | null;
+          target_id?: string | null;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          user_id?: string;
+          activity_type?: string;
+          title?: string;
+          description?: string | null;
+          target_type?: string | null;
+          target_id?: string | null;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'activity_logs_project_id_fkey';
+            columns: ['project_id'];
+            referencedRelation: 'projects';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'activity_logs_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
+      ai_usage: {
+        Row: {
+          id: string;
+          user_id: string;
+          feature: string;
+          tokens_used: number;
+          cost_usd: number;
+          metadata: Json;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          feature: string;
+          tokens_used?: number;
+          cost_usd?: number;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          feature?: string;
+          tokens_used?: number;
+          cost_usd?: number;
+          metadata?: Json;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'ai_usage_user_id_fkey';
+            columns: ['user_id'];
+            referencedRelation: 'profiles';
+            referencedColumns: ['id'];
+          }
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -1491,6 +2307,16 @@ export interface Database {
       feedback_status: FeedbackStatus;
       notification_type: NotificationType;
       edit_project_status: 'draft' | 'registered' | 'approved' | 'rejected';
+      // Chat
+      chat_room_type: ChatRoomType;
+      // Subscription
+      subscription_status: SubscriptionStatus;
+      payment_status: PaymentStatus;
+      payment_method: PaymentMethod;
+      billing_cycle: BillingCycle;
+      // Community
+      vote_type: VoteType;
+      vote_target_type: VoteTargetType;
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -1539,6 +2365,31 @@ export type SubtitleSegmentRow = Tables<'subtitle_segments'>;
 export type VideoChangeMarkerRow = Tables<'video_change_markers'>;
 export type VideoDiffAnalysisRow = Tables<'video_diff_analyses'>;
 export type EditProjectRow = Tables<'edit_projects'>;
+
+// Chat
+export type ChatRoomRow = Tables<'chat_rooms'>;
+export type ChatRoomMemberRow = Tables<'chat_room_members'>;
+export type ChatMessageRow = Tables<'chat_messages'>;
+export type ChatMessageReactionRow = Tables<'chat_message_reactions'>;
+export type ChatMessageReadRow = Tables<'chat_message_reads'>;
+export type ChatMessageDeletionRow = Tables<'chat_message_deletions'>;
+
+// Subscription
+export type SubscriptionPlanRow = Tables<'subscription_plans'>;
+export type SubscriptionRow = Tables<'subscriptions'>;
+export type PaymentRow = Tables<'payments'>;
+export type UsageRecordRow = Tables<'usage_records'>;
+
+// Community
+export type TagRow = Tables<'tags'>;
+export type PostRow = Tables<'posts'>;
+export type PostTagRow = Tables<'post_tags'>;
+export type AnswerRow = Tables<'answers'>;
+export type VoteRow = Tables<'votes'>;
+
+// Activity & AI
+export type ActivityLogRow = Tables<'activity_logs'>;
+export type AiUsageRow = Tables<'ai_usage'>;
 
 // Re-export editing types
 export type {

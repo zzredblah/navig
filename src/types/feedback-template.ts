@@ -35,16 +35,6 @@ export interface ReorderTemplatesRequest {
 // 템플릿 최대 개수
 export const MAX_TEMPLATES = 20;
 
-// 빈 템플릿 생성
-export function createEmptyTemplate(): Omit<FeedbackTemplate, 'id' | 'created_at'> {
-  return {
-    title: '',
-    content: '',
-    is_urgent: false,
-    order: 0,
-  };
-}
-
 // 기본 템플릿 (영상 피드백에 자주 사용되는 템플릿)
 export const DEFAULT_TEMPLATES: Omit<FeedbackTemplate, 'id' | 'created_at' | 'order'>[] = [
   {

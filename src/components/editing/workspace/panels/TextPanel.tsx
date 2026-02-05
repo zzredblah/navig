@@ -41,11 +41,13 @@ export function TextPanel() {
     currentTime,
     videoDuration,
     selectedOverlayId,
+    selectionRange,
     setSelectedOverlayId,
     addTextOverlay,
     updateTextOverlay,
     removeTextOverlay,
     pushHistory,
+    clearSelectionRange,
   } = useEditWorkspaceStore();
 
   const selectedOverlay = metadata.textOverlays.find(
@@ -54,8 +56,21 @@ export function TextPanel() {
 
   const handleAddOverlay = () => {
     pushHistory();
-    const startTime = Math.max(0, currentTime);
-    const endTime = Math.min(videoDuration, startTime + 5);
+
+    let startTime: number;
+    let endTime: number;
+
+    // 타임라인에서 범위가 선택되어 있으면 해당 범위 사용
+    if (selectionRange && selectionRange.endTime > selectionRange.startTime) {
+      startTime = selectionRange.startTime;
+      endTime = selectionRange.endTime;
+      clearSelectionRange(); // 사용 후 선택 해제
+    } else {
+      // 선택 범위 없으면 현재 시간부터 5초
+      startTime = Math.max(0, currentTime);
+      endTime = Math.min(videoDuration, startTime + 5);
+    }
+
     addTextOverlay({
       ...DEFAULT_OVERLAY,
       startTime,
@@ -93,6 +108,13 @@ export function TextPanel() {
         <Plus className="h-4 w-4 mr-2" />
         텍스트 추가
       </Button>
+
+      {/* 선택 범위 안내 */}
+      {selectionRange && selectionRange.endTime > selectionRange.startTime && (
+        <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
+          선택된 구간 ({formatTime(selectionRange.startTime)} - {formatTime(selectionRange.endTime)})에 텍스트가 추가됩니다
+        </div>
+      )}
 
       {/* 오버레이 목록 */}
       {metadata.textOverlays.length > 0 && (
@@ -238,11 +260,15 @@ export function TextPanel() {
 
           {/* 글자 색상 */}
           <div className="space-y-2">
-            <Label className="text-xs">글자 색상</Label>
-            <div className="flex flex-wrap gap-2">
+            <Label className="text-xs" id="color-picker-label">글자 색상</Label>
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="color-picker-label">
               {PRESET_COLORS.map((color) => (
                 <button
                   key={color}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedOverlay.style.color === color}
+                  aria-label={`색상 ${color}`}
                   onClick={() =>
                     handleUpdateOverlay({
                       style: { ...selectedOverlay.style, color },
@@ -250,6 +276,7 @@ export function TextPanel() {
                   }
                   className={cn(
                     'w-6 h-6 rounded border-2 transition-transform',
+                    'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1',
                     selectedOverlay.style.color === color
                       ? 'border-primary-500 scale-110'
                       : 'border-gray-200'
@@ -266,6 +293,7 @@ export function TextPanel() {
                   })
                 }
                 className="w-6 h-6 p-0 border-0"
+                aria-label="사용자 지정 색상 선택"
               />
             </div>
           </div>

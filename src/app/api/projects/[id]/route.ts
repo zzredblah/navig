@@ -1,6 +1,11 @@
-import { createClient, createAdminClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/server';
 import { updateProjectSchema } from '@/lib/validations/project';
 import { NextRequest, NextResponse } from 'next/server';
+import {
+  requireAuth,
+  checkProjectAccess,
+  handleError,
+} from '@/lib/api';
 
 type RouteParams = Promise<{ id: string }>;
 
@@ -11,48 +16,19 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // 인증 확인
+    const { user, error: authError } = await requireAuth();
+    if (authError) return authError;
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: '인증이 필요합니다' },
-        { status: 401 }
-      );
-    }
+    // 프로젝트 접근 권한 확인
+    const { role, error: accessError } = await checkProjectAccess(id, user!.id);
+    if (accessError) return accessError;
 
-    // Admin 클라이언트 사용 (RLS 우회)
-    const adminClient = createAdminClient();
-
-    // 프로젝트 멤버인지 확인 (초대 수락한 멤버만)
-    const { data: member } = await adminClient
-      .from('project_members')
-      .select('role, joined_at')
-      .eq('project_id', id)
-      .eq('user_id', user.id)
-      .not('joined_at', 'is', null) // 초대 수락한 멤버만
-      .single();
-
-    // 멤버가 아니면 프로젝트 소유자인지 확인
-    if (!member) {
-      const { data: project } = await adminClient
-        .from('projects')
-        .select('client_id')
-        .eq('id', id)
-        .single();
-
-      if (!project || project.client_id !== user.id) {
-        return NextResponse.json(
-          { error: '프로젝트에 접근 권한이 없습니다' },
-          { status: 403 }
-        );
-      }
-    }
-
-    const userRole = member?.role || 'owner';
+    const userRole = role || 'owner';
 
     // 프로젝트 상세 조회
+    const adminClient = createAdminClient();
     const { data: project, error: queryError } = await adminClient
       .from('projects')
       .select(`
@@ -79,11 +55,8 @@ export async function GET(
     return NextResponse.json({
       data: { project, userRole },
     });
-  } catch {
-    return NextResponse.json(
-      { error: '서버 오류가 발생했습니다' },
-      { status: 500 }
-    );
+  } catch (error) {
+    return handleError(error, 'Projects API GET');
   }
 }
 
@@ -94,35 +67,19 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // 인증 확인
+    const { user, error: authError } = await requireAuth();
+    if (authError) return authError;
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: '인증이 필요합니다' },
-        { status: 401 }
-      );
-    }
+    // 프로젝트 수정 권한 확인 (owner 또는 editor만)
+    const { error: accessError } = await checkProjectAccess(id, user!.id, [
+      'owner',
+      'editor',
+    ]);
+    if (accessError) return accessError;
 
     const adminClient = createAdminClient();
-
-    // 프로젝트 수정 권한 확인 (초대 수락한 owner 또는 editor만)
-    const { data: member } = await adminClient
-      .from('project_members')
-      .select('role')
-      .eq('project_id', id)
-      .eq('user_id', user.id)
-      .not('joined_at', 'is', null) // 초대 수락한 멤버만
-      .single();
-
-    if (!member || (member.role !== 'owner' && member.role !== 'editor')) {
-      return NextResponse.json(
-        { error: '프로젝트 수정 권한이 없습니다' },
-        { status: 403 }
-      );
-    }
-
     const body = await request.json();
     const validatedData = updateProjectSchema.parse(body);
 
@@ -145,16 +102,7 @@ export async function PATCH(
       data: { project },
     });
   } catch (error) {
-    if (error instanceof Error && error.name === 'ZodError') {
-      return NextResponse.json(
-        { error: '입력값이 유효하지 않습니다' },
-        { status: 400 }
-      );
-    }
-    return NextResponse.json(
-      { error: '서버 오류가 발생했습니다' },
-      { status: 500 }
-    );
+    return handleError(error, 'Projects API PATCH');
   }
 }
 
@@ -165,35 +113,18 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const supabase = await createClient();
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    // 인증 확인
+    const { user, error: authError } = await requireAuth();
+    if (authError) return authError;
 
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: '인증이 필요합니다' },
-        { status: 401 }
-      );
-    }
+    // 프로젝트 삭제 권한 확인 (owner만)
+    const { error: accessError } = await checkProjectAccess(id, user!.id, [
+      'owner',
+    ]);
+    if (accessError) return accessError;
 
     const adminClient = createAdminClient();
-
-    // 프로젝트 삭제 권한 확인 (초대 수락한 owner만)
-    const { data: member } = await adminClient
-      .from('project_members')
-      .select('role')
-      .eq('project_id', id)
-      .eq('user_id', user.id)
-      .not('joined_at', 'is', null) // 초대 수락한 멤버만
-      .single();
-
-    if (!member || member.role !== 'owner') {
-      return NextResponse.json(
-        { error: '프로젝트 삭제 권한이 없습니다' },
-        { status: 403 }
-      );
-    }
-
     const { error: deleteError } = await adminClient
       .from('projects')
       .delete()
@@ -209,10 +140,7 @@ export async function DELETE(
     return NextResponse.json({
       message: '프로젝트가 삭제되었습니다',
     });
-  } catch {
-    return NextResponse.json(
-      { error: '서버 오류가 발생했습니다' },
-      { status: 500 }
-    );
+  } catch (error) {
+    return handleError(error, 'Projects API DELETE');
   }
 }

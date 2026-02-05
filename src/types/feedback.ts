@@ -104,30 +104,6 @@ export function formatTimestamp(seconds: number): string {
   return `${minutes}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
 }
 
-// 타임스탬프 파싱 유틸 (MM:SS.ms → seconds)
-export function parseTimestamp(timestamp: string): number {
-  const parts = timestamp.split(':');
-  if (parts.length === 2) {
-    const [minutes, secondsWithMs] = parts;
-    const [seconds, ms] = secondsWithMs.split('.');
-    return (
-      parseInt(minutes) * 60 +
-      parseInt(seconds) +
-      (ms ? parseInt(ms) / 100 : 0)
-    );
-  } else if (parts.length === 3) {
-    const [hours, minutes, secondsWithMs] = parts;
-    const [seconds, ms] = secondsWithMs.split('.');
-    return (
-      parseInt(hours) * 3600 +
-      parseInt(minutes) * 60 +
-      parseInt(seconds) +
-      (ms ? parseInt(ms) / 100 : 0)
-    );
-  }
-  return 0;
-}
-
 // 상태 라벨
 export const feedbackStatusLabels: Record<FeedbackStatus, { label: string; color: string }> = {
   open: { label: '열림', color: 'bg-blue-100 text-blue-700' },

@@ -43,6 +43,55 @@ function getVideoDuration(file: File): Promise<number> {
   });
 }
 
+// 영상 파일에서 썸네일 생성
+function generateThumbnail(file: File, seekTime?: number): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'auto';
+    video.muted = true;
+    video.playsInline = true;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    video.onloadedmetadata = () => {
+      // 썸네일 캡처 시점: 지정된 시간 또는 duration의 25% (최대 5초)
+      const targetTime = seekTime ?? Math.min(video.duration * 0.25, 5);
+      video.currentTime = targetTime;
+    };
+
+    video.onseeked = () => {
+      // 캔버스에 비디오 프레임 그리기
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // JPEG로 변환 (품질 80%)
+        canvas.toBlob(
+          (blob) => {
+            window.URL.revokeObjectURL(video.src);
+            resolve(blob);
+          },
+          'image/jpeg',
+          0.8
+        );
+      } else {
+        window.URL.revokeObjectURL(video.src);
+        resolve(null);
+      }
+    };
+
+    video.onerror = () => {
+      window.URL.revokeObjectURL(video.src);
+      resolve(null);
+    };
+
+    video.src = URL.createObjectURL(file);
+  });
+}
+
 export function VideoUploader({ projectId, editProjectId, onUploadComplete }: VideoUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -180,7 +229,7 @@ export function VideoUploader({ projectId, editProjectId, onUploadComplete }: Vi
       }
 
       // 3. 영상 duration 추출
-      setUploadProgress({ status: 'processing', progress: 85, message: '영상 정보 분석 중...' });
+      setUploadProgress({ status: 'processing', progress: 82, message: '영상 정보 분석 중...' });
 
       let videoDuration = 0;
       try {
@@ -190,13 +239,43 @@ export function VideoUploader({ projectId, editProjectId, onUploadComplete }: Vi
         console.warn('Duration 추출 실패:', e);
       }
 
-      // 4. 업로드 완료
-      setUploadProgress({ status: 'processing', progress: 90, message: '처리 중...' });
+      // 4. 썸네일 생성 및 업로드
+      setUploadProgress({ status: 'processing', progress: 85, message: '썸네일 생성 중...' });
+
+      let thumbnailUrl: string | undefined;
+      try {
+        const thumbnailBlob = await generateThumbnail(selectedFile);
+        if (thumbnailBlob) {
+          setUploadProgress({ status: 'processing', progress: 88, message: '썸네일 업로드 중...' });
+
+          const thumbnailFormData = new FormData();
+          thumbnailFormData.append('thumbnail', thumbnailBlob, 'thumbnail.jpg');
+
+          const thumbnailResponse = await fetch(
+            `/api/projects/${projectId}/edits/${editProjectId}/thumbnail`,
+            {
+              method: 'POST',
+              body: thumbnailFormData,
+              signal: abortControllerRef.current.signal,
+            }
+          );
+
+          if (thumbnailResponse.ok) {
+            const thumbnailData = await thumbnailResponse.json();
+            thumbnailUrl = thumbnailData.url;
+          }
+        }
+      } catch (e) {
+        console.warn('썸네일 생성/업로드 실패:', e);
+      }
+
+      // 5. 업로드 완료
+      setUploadProgress({ status: 'processing', progress: 92, message: '처리 중...' });
 
       const completeResponse = await fetch(`/api/projects/${projectId}/edits/${editProjectId}/upload-complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uploadId, key, parts: uploadedParts, duration: videoDuration }),
+        body: JSON.stringify({ uploadId, key, parts: uploadedParts, duration: videoDuration, thumbnailUrl }),
         signal: abortControllerRef.current.signal,
       });
 

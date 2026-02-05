@@ -247,17 +247,3 @@ export function formatFileSize(bytes: number): string {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${units[i]}`;
 }
-
-// 첨부 파일 아이콘 타입
-export function getAttachmentIcon(type: AttachmentType): string {
-  switch (type) {
-    case 'image':
-      return 'image';
-    case 'video':
-      return 'video';
-    case 'document':
-      return 'file-text';
-    default:
-      return 'file';
-  }
-}

@@ -9,7 +9,8 @@
 import { useState, useEffect, useRef, use, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Hls from 'hls.js';
+import dynamic from 'next/dynamic';
+import type Hls from 'hls.js';
 import {
   ArrowLeft,
   Video,
@@ -29,8 +30,6 @@ import { Badge } from '@/components/ui/badge';
 import { FeedbackPanel } from '@/components/video/FeedbackPanel';
 import { DrawingCanvas } from '@/components/video/DrawingCanvas';
 import { ApprovalButton } from '@/components/video/ApprovalButton';
-import { VideoCompareModal } from '@/components/video/VideoCompareModal';
-import { VideoDiffAnalyzer } from '@/components/video/VideoDiffAnalyzer';
 import { cn } from '@/lib/utils';
 import { useVideoHotkeys } from '@/hooks/use-global-hotkeys';
 import { useWatermark } from '@/hooks/use-watermark';
@@ -44,6 +43,17 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
+
+// 무거운 컴포넌트들 dynamic import
+const VideoCompareModal = dynamic(
+  () => import('@/components/video/VideoCompareModal').then(mod => ({ default: mod.VideoCompareModal })),
+  { ssr: false }
+);
+
+const VideoDiffAnalyzer = dynamic(
+  () => import('@/components/video/VideoDiffAnalyzer').then(mod => ({ default: mod.VideoDiffAnalyzer })),
+  { ssr: false }
+);
 
 interface VideoVersion {
   id: string;
@@ -206,7 +216,7 @@ export default function VideoReviewPage({
     fetchCurrentUser();
   }, [resolvedParams.id, resolvedParams.videoId, router]);
 
-  // HLS.js 초기화 (Stream 영상용)
+  // HLS.js 초기화 (Stream 영상용) - 동적 import로 번들 크기 최적화
   useEffect(() => {
     const videoElement = videoRef.current;
 
@@ -226,47 +236,60 @@ export default function VideoReviewPage({
       return;
     }
 
-    // 기존 HLS 인스턴스 정리
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
+    let isMounted = true;
 
-    // HLS.js 지원 확인
-    if (Hls.isSupported()) {
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: false,
-        debug: false,
-      });
+    async function initHls() {
+      // 기존 HLS 인스턴스 정리
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
 
-      hls.loadSource(hlsUrl);
-      hls.attachMedia(videoElement);
+      // HLS.js 동적 import (~200KB 절약)
+      const HlsModule = await import('hls.js');
+      const Hls = HlsModule.default;
 
-      hls.on(Hls.Events.ERROR, (event, data) => {
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              hls.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              hls.recoverMediaError();
-              break;
-            default:
-              hls.destroy();
-              break;
+      if (!isMounted || !videoElement) return;
+
+      // HLS.js 지원 확인
+      if (Hls.isSupported()) {
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          debug: false,
+        });
+
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(videoElement);
+
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (data.fatal) {
+            switch (data.type) {
+              case Hls.ErrorTypes.NETWORK_ERROR:
+                hls.startLoad();
+                break;
+              case Hls.ErrorTypes.MEDIA_ERROR:
+                hls.recoverMediaError();
+                break;
+              default:
+                hls.destroy();
+                break;
+            }
           }
-        }
-      });
+        });
 
-      hlsRef.current = hls;
-    } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari 네이티브 HLS 지원
-      videoElement.src = hlsUrl;
+        hlsRef.current = hls;
+      } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari 네이티브 HLS 지원
+        videoElement.src = hlsUrl;
+      }
     }
+
+    initHls();
 
     // 정리 함수
     return () => {
+      isMounted = false;
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;

@@ -1,7 +1,7 @@
 # NAVIG 오류 방지 가이드 (Error Prevention Guide)
 
-**버전:** 2.8
-**최종 수정:** 2026-02-03
+**버전:** 2.9
+**최종 수정:** 2026-02-05
 **목적:** 개발 중 발생한 오류와 해결책을 문서화하여 재발 방지
 
 ---
@@ -2153,3 +2153,365 @@ await completeMultipartUpload('videos', key, uploadId, parts);  // OK
 | `src/app/api/projects/[id]/edits/[editId]/upload/route.ts` | 업로드 시작 API |
 | `src/app/api/projects/[id]/edits/[editId]/upload/part-url/route.ts` | 추가 part URL API |
 | `src/app/api/projects/[id]/edits/[editId]/upload-complete/route.ts` | 업로드 완료 API (Zod transform 패턴) |
+
+---
+
+## 32. 코드 리팩토링 패턴
+
+### 32.1 컴포넌트 추출 기준
+
+> **500줄 이상의 컴포넌트는 반드시 분리해야 합니다.**
+
+**추출 대상:**
+- 독립적인 UI 블록 (오버레이, 모달, 버튼 그룹)
+- 재사용 가능한 로직 (드래그앤드롭, 스크롤 관리)
+- 조건부 렌더링 블록이 50줄 이상인 경우
+
+**추출 예시:**
+```typescript
+// ❌ Bad: 500줄 이상 컴포넌트에 인라인 UI
+function ChatRoom() {
+  // ... 200줄의 상태/로직 ...
+
+  return (
+    <div>
+      {/* 드래그 오버레이 - 인라인 */}
+      {isDragging && (
+        <div className="absolute inset-0 z-50 ...">
+          <Upload className="..." />
+          <p>파일을 놓아 업로드</p>
+        </div>
+      )}
+      {/* ... 300줄의 JSX ... */}
+    </div>
+  );
+}
+
+// ✅ Good: 독립 컴포넌트로 추출
+// DragDropOverlay.tsx
+export function DragDropOverlay({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <div className="absolute inset-0 z-50 ...">
+      <Upload className="..." />
+      <p>파일을 놓아 업로드</p>
+    </div>
+  );
+}
+
+// ChatRoom.tsx
+function ChatRoom() {
+  return (
+    <div>
+      <DragDropOverlay show={isDragging} />
+      {/* ... */}
+    </div>
+  );
+}
+```
+
+### 32.2 커스텀 훅 추출 패턴
+
+**추출 대상:**
+- 상태 + 이벤트 핸들러 조합 (드래그앤드롭, 무한스크롤)
+- 3개 이상의 관련 상태가 있는 로직
+- 여러 컴포넌트에서 재사용 가능한 로직
+
+```typescript
+// ❌ Bad: 컴포넌트 내 드래그 로직 중복
+function ChatRoom() {
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCounterRef.current++;
+    setIsDragging(true);
+  }, []);
+  // ... 50줄의 드래그 관련 코드
+}
+
+// ✅ Good: 커스텀 훅으로 추출
+// use-drag-and-drop.ts
+export function useDragAndDrop({ onFilesDropped }: Options) {
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
+
+  // ... 핸들러 로직 ...
+
+  return {
+    isDragging,
+    dragHandlers: {
+      onDragEnter: handleDragEnter,
+      onDragLeave: handleDragLeave,
+      onDragOver: handleDragOver,
+      onDrop: handleDrop,
+    },
+  };
+}
+
+// ChatRoom.tsx
+function ChatRoom() {
+  const { isDragging, dragHandlers } = useDragAndDrop({
+    onFilesDropped: handleFilesDropped,
+  });
+
+  return <div {...dragHandlers}>...</div>;
+}
+```
+
+### 32.3 유틸리티 함수 추출
+
+**추출 대상:**
+- 같은 포맷팅 함수가 3개 이상 파일에서 사용
+- 순수 함수로 테스트 가능한 로직
+- 날짜/시간, 파일 크기, 문자열 변환 등
+
+```typescript
+// ❌ Bad: 각 컴포넌트에 formatTime 함수 중복
+// Timeline.tsx
+const formatTime = (seconds: number) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+// TrimPanel.tsx (동일 함수 중복)
+const formatTime = (seconds: number) => { ... };
+
+// ✅ Good: 공통 유틸리티로 추출
+// src/lib/utils/time-format.ts
+export function formatTime(seconds: number, showMilliseconds = false): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 100);
+
+  if (showMilliseconds) {
+    return `${mins}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+  }
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Timeline.tsx
+import { formatTime } from '@/lib/utils/time-format';
+```
+
+### 32.4 타입 정리 패턴
+
+```typescript
+// ❌ Bad: 컴포넌트 파일에 타입 정의 혼재
+interface ChatRoomProps { ... }
+interface MessageGroup { ... }
+type MessageAction = 'edit' | 'delete' | 'reply';
+// ... 50줄의 타입 정의 ...
+
+export function ChatRoom() { ... }
+
+// ✅ Good: 타입 파일 분리
+// src/types/chat.ts
+export interface ChatRoomProps { ... }
+export interface MessageGroup { ... }
+export type MessageAction = 'edit' | 'delete' | 'reply';
+
+// ChatRoom.tsx
+import type { ChatRoomProps, MessageGroup } from '@/types/chat';
+```
+
+---
+
+## 33. 체크리스트 (리팩토링)
+
+### 컴포넌트 리팩토링 시 (§32)
+- [ ] 500줄 이상 컴포넌트 분리 필요성 검토 (§32.1)
+- [ ] 조건부 렌더링 50줄 이상이면 별도 컴포넌트로 추출
+- [ ] 상태 + 핸들러 조합은 커스텀 훅으로 추출 (§32.2)
+- [ ] 3개 이상 파일에서 사용하는 함수는 유틸리티로 추출 (§32.3)
+- [ ] 타입 10개 이상이면 별도 타입 파일 분리 (§32.4)
+
+### 코드 클린 시
+- [ ] 미사용 import 제거
+- [ ] 미사용 변수/함수 제거
+- [ ] console.log 제거 (디버깅용만 남김)
+- [ ] any 타입 제거 또는 주석으로 이유 명시
+- [ ] 주석 처리된 코드 삭제
+
+---
+
+## 34. 관련 유틸리티 파일
+
+| 파일 | 설명 |
+|------|------|
+| `src/lib/utils/time-format.ts` | 시간 포맷팅 유틸리티 |
+| `src/lib/chat/utils.ts` | 채팅 관련 유틸리티 (메시지 그룹화, 읽지 않음 카운트) |
+| `src/hooks/use-drag-and-drop.ts` | 드래그앤드롭 훅 |
+| `src/components/chat/DragDropOverlay.tsx` | 드래그 오버레이 컴포넌트 |
+| `src/components/chat/ScrollToBottomButton.tsx` | 스크롤 버튼 컴포넌트 |
+
+---
+
+## 35. 성능 최적화 관련
+
+### 35.1 문제: Middleware에서 불필요한 서버 검증
+
+**원인:**
+- `supabase.auth.getUser()`는 매 요청마다 서버에서 토큰 검증
+- 네트워크 왕복으로 인한 지연 발생
+- 대부분의 경우 JWT 토큰 유효성만 확인하면 충분
+
+**해결책:**
+```typescript
+// ❌ Bad: 매 요청마다 서버 검증 (느림)
+const { data: { user } } = await supabase.auth.getUser();
+if (!user) {
+  redirect('/login');
+}
+
+// ✅ Good: 세션 토큰만 확인 (빠름)
+const { data: { session } } = await supabase.auth.getSession();
+if (!session) {
+  redirect('/login');
+}
+```
+
+**사용 구분:**
+- `getSession()`: Middleware, 빠른 인증 체크
+- `getUser()`: 사용자 정보가 필요한 레이아웃/페이지
+
+---
+
+### 35.2 문제: 동일 요청 내 중복 쿼리
+
+**원인:**
+- Layout과 Page에서 각각 `getUser()` 호출
+- 프로필 정보를 여러 컴포넌트에서 각각 조회
+- 같은 요청 내에서 불필요한 중복 쿼리
+
+**해결책:**
+```typescript
+// ✅ Good: React cache()로 요청 단위 중복 방지
+import { cache } from 'react';
+
+const getUser = cache(async () => {
+  const supabase = await createClient();
+  return supabase.auth.getUser();
+});
+
+const getProfile = cache(async (userId: string) => {
+  const supabase = await createClient();
+  return supabase
+    .from('profiles')
+    .select('name, avatar_url, sidebar_config')
+    .eq('id', userId)
+    .single();
+});
+
+// 레이아웃에서 호출
+export default async function Layout({ children }) {
+  const { data: { user } } = await getUser();  // 첫 호출
+  const { data: profile } = await getProfile(user.id);  // 첫 호출
+  // ...
+}
+
+// 페이지에서 호출해도 캐시됨
+export default async function Page() {
+  const { data: { user } } = await getUser();  // 캐시에서 반환
+  // ...
+}
+```
+
+**규칙:**
+- 서버 컴포넌트에서 자주 호출되는 쿼리는 `cache()` 래핑
+- 사용자 인증, 프로필 조회 등에 필수 적용
+- 캐시는 요청 단위로 자동 초기화됨
+
+---
+
+### 35.3 문제: 무거운 라이브러리 초기 로딩
+
+**원인:**
+- HLS.js (~200KB), recharts (~300KB) 등 큰 라이브러리
+- 초기 번들에 포함되어 First Load JS 증가
+- 해당 기능을 사용하지 않는 사용자도 로딩 지연
+
+**해결책:**
+
+**1. next/dynamic 사용 (컴포넌트 단위):**
+```typescript
+import dynamic from 'next/dynamic';
+
+const VideoCompareModal = dynamic(
+  () => import('@/components/video/VideoCompareModal').then(mod => ({ default: mod.VideoCompareModal })),
+  { ssr: false }
+);
+
+const ChartComponent = dynamic(
+  () => import('./Charts').then(mod => ({ default: mod.ChartComponent })),
+  { loading: () => <ChartSkeleton />, ssr: false }
+);
+```
+
+**2. useEffect 내 동적 import (라이브러리 단위):**
+```typescript
+// ✅ Good: HLS.js 동적 import
+useEffect(() => {
+  async function initHls() {
+    const HlsModule = await import('hls.js');
+    const Hls = HlsModule.default;
+
+    if (Hls.isSupported()) {
+      const hls = new Hls({ enableWorker: true });
+      hls.loadSource(hlsUrl);
+      hls.attachMedia(videoElement);
+      hlsRef.current = hls;
+    }
+  }
+
+  if (videoUrl) {
+    initHls();
+  }
+
+  return () => {
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+    }
+  };
+}, [videoUrl]);
+```
+
+**라이브러리별 권장 전략:**
+
+| 라이브러리 | 크기 | 전략 |
+|-----------|------|------|
+| hls.js | ~200KB | useEffect 내 동적 import |
+| recharts | ~300KB | next/dynamic (ssr: false) |
+| VideoCompareModal | ~50KB | next/dynamic |
+| @aws-sdk/client-s3 | ~500KB | API Route만 사용 (클라이언트 포함 안됨) |
+
+---
+
+## 36. 체크리스트 (성능 최적화)
+
+### 인증 관련 (§35.1)
+- [ ] Middleware에서 `getSession()` 사용 (getUser() 아님)
+- [ ] 사용자 정보 필요 시에만 `getUser()` 호출
+
+### 쿼리 최적화 (§35.2)
+- [ ] 반복 호출되는 서버 쿼리에 `cache()` 래핑
+- [ ] Layout + Page 모두에서 사용하는 쿼리 확인
+
+### 번들 최적화 (§35.3)
+- [ ] 무거운 라이브러리 (100KB+) 동적 import 적용
+- [ ] ssr: false 필요 여부 확인 (브라우저 전용 API)
+- [ ] 로딩 스켈레톤 제공
+
+---
+
+## 37. 관련 파일 (성능 최적화)
+
+| 파일 | 설명 |
+|------|------|
+| `src/middleware.ts` | getSession() 패턴 |
+| `src/app/(dashboard)/layout.tsx` | React cache() 패턴 |
+| `src/app/(dashboard)/projects/[id]/videos/[videoId]/page.tsx` | HLS.js 동적 import |
+| `src/components/dashboard/DashboardChartsLazy.tsx` | recharts 동적 import 래퍼 |
+| `src/app/(dashboard)/analytics/page.tsx` | 분석 탭 동적 import |

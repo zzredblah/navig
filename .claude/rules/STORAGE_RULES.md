@@ -55,6 +55,9 @@ src/
 ├── documents/               # 문서 첨부파일
 │   └── {document_id}/
 │       └── {filename}
+├── edit-thumbnails/         # 편집 프로젝트 썸네일
+│   └── {project_id}/
+│       └── {edit_id}.jpg
 └── misc/                    # 기타 파일
     └── ...
 ```

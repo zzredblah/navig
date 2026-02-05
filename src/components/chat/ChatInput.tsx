@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { EmojiPicker } from './EmojiPicker';
 import { ChatAttachment, ChatMessageWithDetails, formatFileSize } from '@/types/chat';
+import { toast } from '@/hooks/use-toast';
 
 interface ChatInputProps {
   roomId: string;
@@ -138,7 +139,11 @@ export function ChatInput({
       for (const file of fileArray) {
         // 파일 크기 검증 (20MB)
         if (file.size > 20 * 1024 * 1024) {
-          alert(`${file.name}: 파일 크기는 20MB를 초과할 수 없습니다.`);
+          toast({
+            variant: 'destructive',
+            title: '파일 크기 초과',
+            description: `${file.name}: 20MB를 초과할 수 없습니다.`,
+          });
           continue;
         }
 
@@ -159,7 +164,11 @@ export function ChatInput({
         );
 
         if (!isAllowed) {
-          alert(`${file.name}: 지원하지 않는 파일 형식입니다.`);
+          toast({
+            variant: 'destructive',
+            title: '지원하지 않는 형식',
+            description: `${file.name}: 이 파일 형식은 업로드할 수 없습니다.`,
+          });
           continue;
         }
 

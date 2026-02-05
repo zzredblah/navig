@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Loader2,
   Sparkles,
@@ -35,7 +35,8 @@ import { SUBTITLE_LANGUAGES } from '@/types/subtitle';
 import { SubtitleEditor } from './SubtitleEditor';
 
 interface SubtitleGeneratorProps {
-  videoVersionId: string;
+  videoVersionId?: string;
+  editProjectId?: string;
   videoUrl?: string;
   hlsUrl?: string;
   onSubtitleGenerated?: (subtitle: VideoSubtitle) => void;
@@ -44,11 +45,15 @@ interface SubtitleGeneratorProps {
 
 export function SubtitleGenerator({
   videoVersionId,
+  editProjectId,
   videoUrl,
   hlsUrl,
   onSubtitleGenerated,
   onSubtitleUpdated,
 }: SubtitleGeneratorProps) {
+  // videoVersionId 또는 editProjectId 중 하나가 필요
+  const sourceId = videoVersionId || editProjectId;
+  const sourceType = videoVersionId ? 'video_version' : 'edit_project';
   const [subtitles, setSubtitles] = useState<VideoSubtitle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -60,14 +65,14 @@ export function SubtitleGenerator({
   const [mounted, setMounted] = useState(false);
   const [editingSubtitle, setEditingSubtitle] = useState<VideoSubtitle | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-    fetchSubtitles();
-  }, [videoVersionId]);
+  const fetchSubtitles = useCallback(async () => {
+    if (!sourceId) return;
 
-  const fetchSubtitles = async () => {
     try {
-      const response = await fetch(`/api/ai/subtitles?video_version_id=${videoVersionId}`);
+      const queryParam = sourceType === 'video_version'
+        ? `video_version_id=${sourceId}`
+        : `edit_project_id=${sourceId}`;
+      const response = await fetch(`/api/ai/subtitles?${queryParam}`);
       if (response.ok) {
         const { data } = await response.json();
         setSubtitles(data || []);
@@ -77,21 +82,42 @@ export function SubtitleGenerator({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [sourceId, sourceType]);
+
+  useEffect(() => {
+    setMounted(true);
+    if (sourceId) {
+      fetchSubtitles();
+    }
+  }, [sourceId, fetchSubtitles]);
 
   const handleGenerate = async () => {
+    if (!sourceId) return;
+
     setIsGenerating(true);
     setError(null);
 
     try {
+      const requestBody: {
+        video_version_id?: string;
+        edit_project_id?: string;
+        language: string;
+        format: string;
+      } = {
+        language: selectedLanguage,
+        format: selectedFormat,
+      };
+
+      if (sourceType === 'video_version') {
+        requestBody.video_version_id = sourceId;
+      } else {
+        requestBody.edit_project_id = sourceId;
+      }
+
       const response = await fetch('/api/ai/subtitles', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          video_version_id: videoVersionId,
-          language: selectedLanguage,
-          format: selectedFormat,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const result = await response.json();

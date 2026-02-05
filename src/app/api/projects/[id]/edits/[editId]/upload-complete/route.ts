@@ -16,6 +16,7 @@ const uploadCompleteSchema = z.object({
     etag: p.etag,
   }))),
   duration: z.number().optional(), // 클라이언트에서 추출한 duration
+  thumbnailUrl: z.string().url().optional(), // 썸네일 URL
 });
 
 // 업로드 완료
@@ -68,12 +69,12 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { uploadId, key, parts, duration } = uploadCompleteSchema.parse(body);
+    const { uploadId, key, parts, duration, thumbnailUrl } = uploadCompleteSchema.parse(body);
 
     // 멀티파트 업로드 완료
     const { url } = await completeMultipartUpload('videos', key, uploadId, parts);
 
-    // 편집 프로젝트 업데이트 (duration은 클라이언트에서 제공)
+    // 편집 프로젝트 업데이트 (duration, thumbnailUrl은 클라이언트에서 제공)
     const updateData: Record<string, unknown> = {
       source_url: url,
       source_key: key,
@@ -81,6 +82,10 @@ export async function POST(
 
     if (duration) {
       updateData.original_duration = duration;
+    }
+
+    if (thumbnailUrl) {
+      updateData.preview_thumbnail_url = thumbnailUrl;
     }
 
     const { error: updateError } = await adminClient

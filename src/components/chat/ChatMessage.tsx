@@ -291,8 +291,11 @@ export function ChatMessage({
               <button
                 key={reaction.emoji}
                 onClick={() => handleReaction(reaction.emoji)}
+                aria-label={`${reaction.emoji} 리액션 ${reaction.count}명${reaction.reacted_by_me ? ' (나도 반응함)' : ''}`}
+                aria-pressed={reaction.reacted_by_me}
                 className={cn(
                   'flex items-center gap-1 px-2 py-0.5 rounded-full text-sm border transition-colors',
+                  'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1',
                   reaction.reacted_by_me
                     ? 'bg-primary-50 border-primary-200 text-primary-700'
                     : 'bg-gray-50 border-gray-200 hover:bg-gray-100'

@@ -161,6 +161,12 @@ export function Sidebar({ isOpen, onClose, sidebarConfig }: SidebarProps) {
   const [recentProjects, setRecentProjects] = useState<SimpleProject[]>([]);
   const [isLoadingProjects, setIsLoadingProjects] = useState(false);
   const [userRole, setUserRole] = useState<MemberRole | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  // Hydration 에러 방지 - 클라이언트에서만 Radix UI 컴포넌트 렌더링
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // 최근 프로젝트 목록 로드 및 선택된 프로젝트 유효성 검사
   useEffect(() => {
@@ -346,78 +352,96 @@ export function Sidebar({ isOpen, onClose, sidebarConfig }: SidebarProps) {
 
           {/* 프로젝트 선택기 */}
           <div className="px-3 py-3 border-b border-gray-100">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-left">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className={cn(
-                      "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
-                      selectedProject ? "bg-primary-100" : "bg-gray-200"
-                    )}>
-                      <FolderOpen className={cn(
-                        "h-4 w-4",
-                        selectedProject ? "text-primary-600" : "text-gray-500"
-                      )} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs text-gray-500">
-                        {selectedProject ? '선택된 프로젝트' : '프로젝트 선택'}
-                      </p>
-                      <p className={cn(
-                        "text-sm font-medium truncate",
-                        selectedProject ? "text-gray-900" : "text-gray-500"
+            {mounted ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors text-left">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={cn(
+                        "w-8 h-8 rounded-lg flex items-center justify-center shrink-0",
+                        selectedProject ? "bg-primary-100" : "bg-gray-200"
                       )}>
-                        {selectedProject?.title || '프로젝트를 선택하세요'}
-                      </p>
+                        <FolderOpen className={cn(
+                          "h-4 w-4",
+                          selectedProject ? "text-primary-600" : "text-gray-500"
+                        )} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-500">
+                          {selectedProject ? '선택된 프로젝트' : '프로젝트 선택'}
+                        </p>
+                        <p className={cn(
+                          "text-sm font-medium truncate",
+                          selectedProject ? "text-gray-900" : "text-gray-500"
+                        )}>
+                          {selectedProject?.title || '프로젝트를 선택하세요'}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-56">
-                {isLoadingProjects ? (
-                  <div className="px-3 py-2 text-sm text-gray-500">로딩 중...</div>
-                ) : recentProjects.length === 0 ? (
-                  <div className="px-3 py-2 text-sm text-gray-500">프로젝트가 없습니다</div>
-                ) : (
-                  <>
-                    <div className="px-2 py-1.5 text-xs font-medium text-gray-500">
-                      최근 프로젝트
-                    </div>
-                    {recentProjects.map((project) => (
+                    <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  {isLoadingProjects ? (
+                    <div className="px-3 py-2 text-sm text-gray-500">로딩 중...</div>
+                  ) : recentProjects.length === 0 ? (
+                    <div className="px-3 py-2 text-sm text-gray-500">프로젝트가 없습니다</div>
+                  ) : (
+                    <>
+                      <div className="px-2 py-1.5 text-xs font-medium text-gray-500">
+                        최근 프로젝트
+                      </div>
+                      {recentProjects.map((project) => (
+                        <DropdownMenuItem
+                          key={project.id}
+                          onClick={() => handleSelectProject(project)}
+                          className="cursor-pointer"
+                        >
+                          <FolderOpen className="h-4 w-4 mr-2 text-gray-500" />
+                          <span className="truncate flex-1">{project.title}</span>
+                          {selectedProject?.id === project.id && (
+                            <Check className="h-4 w-4 text-primary-600 ml-2" />
+                          )}
+                        </DropdownMenuItem>
+                      ))}
+                    </>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => { router.push('/projects'); onClose?.(); }}>
+                    <FolderOpen className="h-4 w-4 mr-2 text-gray-500" />
+                    모든 프로젝트 보기
+                  </DropdownMenuItem>
+                  {selectedProject && (
+                    <>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem
-                        key={project.id}
-                        onClick={() => handleSelectProject(project)}
-                        className="cursor-pointer"
+                        onClick={handleExitProject}
+                        className="text-red-600 focus:text-red-600"
                       >
-                        <FolderOpen className="h-4 w-4 mr-2 text-gray-500" />
-                        <span className="truncate flex-1">{project.title}</span>
-                        {selectedProject?.id === project.id && (
-                          <Check className="h-4 w-4 text-primary-600 ml-2" />
-                        )}
+                        <LogOut className="h-4 w-4 mr-2" />
+                        프로젝트 나가기
                       </DropdownMenuItem>
-                    ))}
-                  </>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => { router.push('/projects'); onClose?.(); }}>
-                  <FolderOpen className="h-4 w-4 mr-2 text-gray-500" />
-                  모든 프로젝트 보기
-                </DropdownMenuItem>
-                {selectedProject && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={handleExitProject}
-                      className="text-red-600 focus:text-red-600"
-                    >
-                      <LogOut className="h-4 w-4 mr-2" />
-                      프로젝트 나가기
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              // 서버 렌더링 시 정적 버튼만 표시 (Hydration 에러 방지)
+              <div className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg bg-gray-50 text-left">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gray-200">
+                    <FolderOpen className="h-4 w-4 text-gray-500" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs text-gray-500">프로젝트 선택</p>
+                    <p className="text-sm font-medium truncate text-gray-500">
+                      프로젝트를 선택하세요
+                    </p>
+                  </div>
+                </div>
+                <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+              </div>
+            )}
           </div>
 
           {/* Navigation */}

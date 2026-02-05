@@ -1,12 +1,43 @@
 'use client';
 
 import { useState } from 'react';
-import { BarChart3, FolderOpen, MessageSquare, Users } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { BarChart3, FolderOpen, MessageSquare, Users, Loader2 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AnalyticsPeriodSelect } from '@/components/analytics/AnalyticsPeriodSelect';
-import { ProjectAnalyticsTab } from '@/components/analytics/ProjectAnalyticsTab';
-import { FeedbackAnalyticsTab } from '@/components/analytics/FeedbackAnalyticsTab';
-import { WorkerAnalyticsTab } from '@/components/analytics/WorkerAnalyticsTab';
+
+// recharts를 사용하는 무거운 컴포넌트들은 dynamic import
+const ProjectAnalyticsTab = dynamic(
+  () => import('@/components/analytics/ProjectAnalyticsTab').then(mod => ({ default: mod.ProjectAnalyticsTab })),
+  {
+    loading: () => <AnalyticsTabSkeleton />,
+    ssr: false,
+  }
+);
+
+const FeedbackAnalyticsTab = dynamic(
+  () => import('@/components/analytics/FeedbackAnalyticsTab').then(mod => ({ default: mod.FeedbackAnalyticsTab })),
+  {
+    loading: () => <AnalyticsTabSkeleton />,
+    ssr: false,
+  }
+);
+
+const WorkerAnalyticsTab = dynamic(
+  () => import('@/components/analytics/WorkerAnalyticsTab').then(mod => ({ default: mod.WorkerAnalyticsTab })),
+  {
+    loading: () => <AnalyticsTabSkeleton />,
+    ssr: false,
+  }
+);
+
+function AnalyticsTabSkeleton() {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <Loader2 className="h-8 w-8 animate-spin text-primary-500" />
+    </div>
+  );
+}
 
 export default function AnalyticsPage() {
   const [period, setPeriod] = useState('30d');

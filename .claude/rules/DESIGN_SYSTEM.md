@@ -1,7 +1,7 @@
 # NAVIG 디자인 시스템 (Design System)
 
-**버전:** 3.0
-**최종 수정:** 2026-01-23
+**버전:** 3.1
+**최종 수정:** 2026-02-05
 
 > **중요**: 모든 UI 개발 시 이 문서를 참조하세요. 일관된 디자인을 유지하기 위해 정의된 색상, 컴포넌트, 패턴을 사용해야 합니다.
 
@@ -707,7 +707,165 @@ raw `<input>`이 필요한 경우:
 
 ---
 
-## 11. 다크 모드 (선택적)
+## 11. 접근성 (Accessibility) - 필수
+
+### 11.1 포커스 스타일 - 모든 인터랙티브 요소 필수
+
+> **중요**: 키보드 사용자를 위해 모든 클릭 가능한 요소는 포커스 스타일이 필수입니다.
+> shadcn/ui `<Button>` 컴포넌트는 자동 적용되지만, raw `<button>`, `<div onClick>` 등은 직접 추가해야 합니다.
+
+```jsx
+// ✅ Good: 포커스 스타일이 있는 raw 버튼
+<button
+  onClick={handleClick}
+  className="text-gray-400 hover:text-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 rounded px-2 py-1"
+>
+  클릭
+</button>
+
+// ✅ Good: 아이콘만 있는 버튼
+<button
+  onClick={handleAction}
+  className="p-1 hover:bg-gray-100 rounded focus:outline-none focus:ring-2 focus:ring-primary-500"
+  aria-label="액션 설명"
+>
+  <Icon className="h-4 w-4" />
+</button>
+
+// ❌ Bad: 포커스 스타일 없음
+<button onClick={handleClick} className="text-gray-400 hover:text-gray-600">
+  클릭
+</button>
+
+// ❌ Bad: div를 버튼처럼 사용
+<div onClick={handleClick} className="cursor-pointer">
+  클릭
+</div>
+```
+
+**필수 포커스 클래스:**
+```css
+focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1
+```
+
+### 11.2 ARIA 레이블 - 아이콘 버튼 필수
+
+```jsx
+// ✅ Good: aria-label로 버튼 목적 설명
+<button
+  onClick={onDelete}
+  aria-label="삭제"
+  className="..."
+>
+  <Trash2 className="h-4 w-4" />
+</button>
+
+// ✅ Good: 토글 버튼에 aria-pressed 사용
+<button
+  onClick={() => setIsActive(!isActive)}
+  aria-label={isActive ? '활성화됨' : '비활성화됨'}
+  aria-pressed={isActive}
+  className="..."
+>
+  <Icon />
+</button>
+
+// ✅ Good: 리액션 버튼
+<button
+  onClick={() => handleReaction(emoji)}
+  aria-label={`${emoji} 리액션 ${count}명${reactedByMe ? ' (나도 반응함)' : ''}`}
+  aria-pressed={reactedByMe}
+  className="focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1 ..."
+>
+  <span>{emoji}</span>
+  <span>{count}</span>
+</button>
+
+// ❌ Bad: 텍스트 없는 버튼에 aria-label 없음
+<button onClick={onDelete}>
+  <Trash2 className="h-4 w-4" />
+</button>
+```
+
+### 11.3 색상 선택기 (Color Picker) 접근성
+
+```jsx
+// ✅ Good: radiogroup 역할 + aria-label
+<div className="space-y-2">
+  <Label id="color-picker-label">색상</Label>
+  <div className="flex flex-wrap gap-2" role="radiogroup" aria-labelledby="color-picker-label">
+    {COLORS.map((color) => (
+      <button
+        key={color}
+        type="button"
+        role="radio"
+        aria-checked={selectedColor === color}
+        aria-label={`색상 ${color}`}
+        onClick={() => setSelectedColor(color)}
+        className={cn(
+          'w-6 h-6 rounded border-2 transition-transform',
+          'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1',
+          selectedColor === color ? 'border-primary-500 scale-110' : 'border-gray-200'
+        )}
+        style={{ backgroundColor: color }}
+      />
+    ))}
+  </div>
+</div>
+
+// ❌ Bad: 역할과 상태 정보 없음
+<div className="flex gap-2">
+  {COLORS.map((color) => (
+    <button
+      key={color}
+      onClick={() => setSelectedColor(color)}
+      className="w-6 h-6 rounded"
+      style={{ backgroundColor: color }}
+    />
+  ))}
+</div>
+```
+
+### 11.4 Toast vs Alert - 에러/알림 표시
+
+> **중요**: 브라우저 `alert()`는 절대 사용 금지. 항상 toast 사용.
+
+```jsx
+// ✅ Good: toast 사용
+import { toast } from '@/hooks/use-toast';
+// 또는
+import { toast } from 'sonner';
+
+// 에러 표시
+toast({
+  variant: 'destructive',
+  title: '파일 크기 초과',
+  description: '20MB를 초과할 수 없습니다.',
+});
+
+// 성공 표시
+toast({
+  title: '저장 완료',
+  description: '변경사항이 저장되었습니다.',
+});
+
+// sonner 사용 시
+toast.error('업로드 실패');
+toast.success('저장 완료');
+
+// ❌ Bad: 브라우저 alert 사용
+alert('파일 크기가 너무 큽니다!');
+```
+
+**Toast 사용 이유:**
+- 화면 차단 없이 피드백 제공
+- 일관된 디자인
+- 자동 사라짐 + 수동 닫기 지원
+- 여러 알림 스택 가능
+
+---
+
+## 12. 다크 모드 (선택적)
 
 ```css
 /* globals.css에 정의됨 */
@@ -750,6 +908,14 @@ raw `<input>`이 필요한 경우:
 - [ ] 모든 클릭 가능한 요소에 피드백 존재 (§10)
 - [ ] 빈 상태 UI 구현 (리스트, 드롭다운)
 - [ ] 로딩/에러 상태 UI 구현
+
+### 접근성 (필수)
+- [ ] 모든 raw 버튼에 포커스 스타일: `focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1` (§11.1)
+- [ ] 아이콘만 있는 버튼에 `aria-label` 필수 (§11.2)
+- [ ] 토글 버튼에 `aria-pressed` 사용 (§11.2)
+- [ ] 색상 선택기에 `role="radiogroup"` + `aria-checked` (§11.3)
+- [ ] 에러/알림은 `alert()` 대신 `toast` 사용 (§11.4)
+- [ ] shadcn `<Button>` 컴포넌트 우선 사용 (자동 포커스 스타일)
 
 ---
 

@@ -6,6 +6,16 @@ import type {
   EditTool,
 } from '@/types/editing';
 import { DEFAULT_EDIT_METADATA, DEFAULT_FILTERS } from '@/types/editing';
+import type { SubtitleSegment } from '@/types/subtitle';
+
+// 상수
+const MAX_HISTORY_SIZE = 50;
+
+/** 타임라인 선택 범위 */
+interface SelectionRange {
+  startTime: number;
+  endTime: number;
+}
 
 interface EditWorkspaceState {
   // 프로젝트 정보
@@ -27,6 +37,12 @@ interface EditWorkspaceState {
   // UI 상태
   selectedTool: EditTool;
   selectedOverlayId: string | null;
+
+  // 타임라인 선택 범위 (모든 도구에서 공유)
+  selectionRange: SelectionRange | null;
+
+  // 자막 세그먼트 (타임라인 표시용)
+  subtitleSegments: SubtitleSegment[];
 
   // 저장 상태
   isDirty: boolean;
@@ -67,8 +83,10 @@ interface EditWorkspaceActions {
 
   // 텍스트 오버레이
   addTextOverlay: (overlay: Omit<TextOverlay, 'id'>) => string;
+  addTextOverlayWithId: (id: string, overlay: Omit<TextOverlay, 'id'>) => void;
   updateTextOverlay: (id: string, updates: Partial<TextOverlay>) => void;
   removeTextOverlay: (id: string) => void;
+  removeTextOverlaysByPrefix: (prefix: string) => number;
 
   // 필터
   setFilter: (filter: keyof FilterSettings, value: number) => void;
@@ -81,6 +99,12 @@ interface EditWorkspaceActions {
 
   // 자막
   setSubtitleId: (id: string | null) => void;
+  setSubtitleSegments: (segments: SubtitleSegment[]) => void;
+  updateSubtitleSegment: (id: string, updates: Partial<SubtitleSegment>) => void;
+
+  // 타임라인 선택 범위
+  setSelectionRange: (range: SelectionRange | null) => void;
+  clearSelectionRange: () => void;
 
   // 히스토리
   pushHistory: () => void;
@@ -113,6 +137,8 @@ const initialState: EditWorkspaceState = {
   metadata: DEFAULT_EDIT_METADATA,
   selectedTool: 'trim',
   selectedOverlayId: null,
+  selectionRange: null,
+  subtitleSegments: [],
   isDirty: false,
   isSaving: false,
   lastSavedAt: null,
@@ -195,7 +221,8 @@ export const useEditWorkspaceStore = create<EditWorkspaceState & EditWorkspaceAc
 
     // 텍스트 오버레이
     addTextOverlay: (overlay) => {
-      const id = `text-${Date.now()}`;
+      // 고유 ID 생성: timestamp + random string
+      const id = `text-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
       const state = get();
       set({
         metadata: {
@@ -206,6 +233,19 @@ export const useEditWorkspaceStore = create<EditWorkspaceState & EditWorkspaceAc
         isDirty: true,
       });
       return id;
+    },
+
+    addTextOverlayWithId: (id, overlay) => {
+      const state = get();
+      // 이미 같은 ID가 있으면 제거 후 추가 (업데이트 효과)
+      const filteredOverlays = state.metadata.textOverlays.filter(o => o.id !== id);
+      set({
+        metadata: {
+          ...state.metadata,
+          textOverlays: [...filteredOverlays, { ...overlay, id }],
+        },
+        isDirty: true,
+      });
     },
 
     updateTextOverlay: (id, updates) => {
@@ -231,6 +271,23 @@ export const useEditWorkspaceStore = create<EditWorkspaceState & EditWorkspaceAc
         selectedOverlayId: state.selectedOverlayId === id ? null : state.selectedOverlayId,
         isDirty: true,
       });
+    },
+
+    removeTextOverlaysByPrefix: (prefix) => {
+      const state = get();
+      const toRemove = state.metadata.textOverlays.filter((o) => o.id.startsWith(prefix));
+      const remaining = state.metadata.textOverlays.filter((o) => !o.id.startsWith(prefix));
+
+      set({
+        metadata: {
+          ...state.metadata,
+          textOverlays: remaining,
+        },
+        selectedOverlayId: state.selectedOverlayId?.startsWith(prefix) ? null : state.selectedOverlayId,
+        isDirty: true,
+      });
+
+      return toRemove.length;
     },
 
     // 필터
@@ -311,13 +368,28 @@ export const useEditWorkspaceStore = create<EditWorkspaceState & EditWorkspaceAc
       });
     },
 
+    setSubtitleSegments: (segments) => set({ subtitleSegments: segments }),
+
+    updateSubtitleSegment: (id, updates) => {
+      const state = get();
+      set({
+        subtitleSegments: state.subtitleSegments.map((s) =>
+          s.id === id ? { ...s, ...updates } : s
+        ),
+      });
+    },
+
+    // 타임라인 선택 범위
+    setSelectionRange: (range) => set({ selectionRange: range }),
+    clearSelectionRange: () => set({ selectionRange: null }),
+
     // 히스토리
     pushHistory: () => {
       const state = get();
       const newHistory = state.history.slice(0, state.historyIndex + 1);
       newHistory.push({ ...state.metadata });
       set({
-        history: newHistory.slice(-50), // 최대 50개 유지
+        history: newHistory.slice(-MAX_HISTORY_SIZE),
         historyIndex: newHistory.length - 1,
       });
     },

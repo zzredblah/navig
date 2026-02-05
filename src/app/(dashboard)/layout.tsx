@@ -1,5 +1,6 @@
 import { Metadata } from 'next';
 import { redirect } from 'next/navigation';
+import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { MainLayout } from '@/components/layout';
 
@@ -12,21 +13,30 @@ interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
-export default async function DashboardLayout({ children }: DashboardLayoutProps) {
+// React cache로 요청 단위 중복 호출 방지
+const getUser = cache(async () => {
   const supabase = await createClient();
+  return supabase.auth.getUser();
+});
 
-  const { data: { user }, error } = await supabase.auth.getUser();
+const getProfile = cache(async (userId: string) => {
+  const supabase = await createClient();
+  return supabase
+    .from('profiles')
+    .select('name, avatar_url, sidebar_config')
+    .eq('id', userId)
+    .single();
+});
+
+export default async function DashboardLayout({ children }: DashboardLayoutProps) {
+  const { data: { user }, error } = await getUser();
 
   if (error || !user) {
     redirect('/login');
   }
 
-  // 프로필 정보 가져오기
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('name, avatar_url, sidebar_config')
-    .eq('id', user.id)
-    .single();
+  // 프로필 정보 가져오기 (캐싱됨)
+  const { data: profile } = await getProfile(user.id);
 
   const userData = {
     id: user.id,
